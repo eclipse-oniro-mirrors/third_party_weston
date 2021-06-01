@@ -1,0 +1,11 @@
+[
+    {
+        "Name": "weston",
+        "License": "MIT license",
+        "License File": "COPYING",
+        "Version Number": "9.0.0",
+        "Owner": "lizheng2@huawei.com",
+        "Upstream URL": "https://wayland.freedesktop.org/releases/weston-9.0.0.tar.xz",
+        "Description": "Weston is the reference implementation of a Wayland compositor, as well as a useful environment in and of itself."
+    }
+]
