@@ -150,6 +150,17 @@ static void dst_surface_init(ISurface *surface, pixman_image_t *target_image,
     surface->alpha0 = 0XFF;
     surface->alpha1 = 0XFF;
 }
+static IRect get_irect_from_box32(pixman_region32_t *region32)
+{
+    pixman_box32_t box32 = *pixman_region32_extents(region32);
+    IRect Rect = {box32.x1, box32.y1, box32.x2 - box32.x1, box32.y2 - box32.y1};
+    return Rect;
+}
+
+static __inline int32_t min(int32_t x, int32_t y)
+{
+    return x < y ? x : y;
+}
 
 static int tde_repaint_region(struct weston_view *ev,
                               struct weston_output *output,
@@ -159,28 +170,25 @@ static int tde_repaint_region(struct weston_view *ev,
     struct pixman_renderer *renderer = output->compositor->renderer;
     struct pixman_surface_state *surface = get_surface_state(ev->surface);
     struct pixman_output_state *output_state = get_output_state(output);
-
+    float view_x = 0;
+    float view_y = 0;
+    weston_view_to_global_float(ev, 0, 0, &view_x, &view_y);
+    IRect IdstRect = get_irect_from_box32(repaint_output);
+    IRect IsrcRect = get_irect_from_box32(buffer_region);
     int ret = 0;
     ret = renderer->tde->gfx_funcs->InitGfx();
     if (ret) {
         return -1;
     }
-
     pixman_image_t *target_image = output_state->hw_buffer;
     if (output_state->shadow_image) {
         target_image = output_state->shadow_image;
     }
-
     ISurface dstSurface = {};
     dst_surface_init(&dstSurface, target_image, output);
-
-    pixman_box32_t dstRect = *pixman_region32_extents(repaint_output);
-    IRect IdstRect = {dstRect.x1, dstRect.y1,
-        dstRect.x2 - dstRect.x1, dstRect.y2 - dstRect.y1};
-
-    if (ev->surface->type == 2) {
+    if (ev->surface->type == WL_SURFACE_TYPE_VIDEO) {
         GfxOpt opt = {
-            .blendType = BLEND_SRCOVER,
+            .blendType = BLEND_SRC,
             .enableScale = true,
             .enPixelAlpha = true,
         };
@@ -188,20 +196,20 @@ static int tde_repaint_region(struct weston_view *ev,
                                            0x00000000, &opt);
     } else {
         GfxOpt opt = {
-            .blendType = BLEND_SRC,
-            .rotateType = ROTATE_90,
+            .blendType = BLEND_SRCOVER,
             .enableScale = true,
             .enPixelAlpha = true,
         };
-        pixman_box32_t srcRect = *pixman_region32_extents(buffer_region);
-        IRect IsrcRect = {srcRect.x1, srcRect.y1,
-            srcRect.x2 - srcRect.x1 ,srcRect.y2 - srcRect.y1};
+        IsrcRect.x += IdstRect.x - view_x;
+        IsrcRect.y += IdstRect.y - view_y;
+        IdstRect.w = min(IsrcRect.w, IdstRect.w);
+        IsrcRect.w = min(IsrcRect.w, IdstRect.w);
+        IdstRect.h = min(IsrcRect.h, IdstRect.h);
+        IsrcRect.h = min(IsrcRect.h, IdstRect.h);
         ISurface srcSurface = {};
         src_surface_init(&srcSurface, surface->tde->image);
-
         ret = renderer->tde->gfx_funcs->Blit(&srcSurface, &IsrcRect, &dstSurface, &IdstRect, &opt);
     }
-
     ret = renderer->tde->gfx_funcs->DeinitGfx();
     return 0;
 }
