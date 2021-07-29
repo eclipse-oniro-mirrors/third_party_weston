@@ -46,7 +46,7 @@
 #include "shared/timespec-util.h"
 
 void
-evdev_led_update(struct evdev_device *device, enum weston_led weston_leds)
+evdev_led_update_l(struct evdev_device *device, enum weston_led weston_leds)
 {
 	enum libinput_led leds = 0;
 
@@ -491,7 +491,7 @@ handle_touch_frame(struct libinput_device *libinput_device,
 }
 
 int
-evdev_device_process_event(struct libinput_event *event)
+evdev_device_process_event_l(struct libinput_event *event)
 {
 	struct libinput_device *libinput_device =
 		libinput_event_get_device(event);
@@ -558,7 +558,7 @@ notify_output_destroy(struct wl_listener *listener, void *data)
 		container_of(listener,
 			     struct evdev_device, output_destroy_listener);
 
-	evdev_device_set_output(device, NULL);
+	evdev_device_set_output_l(device, NULL);
 }
 
 /**
@@ -568,7 +568,7 @@ notify_output_destroy(struct wl_listener *listener, void *data)
  * format libinput expects.
  */
 void
-evdev_device_set_calibration(struct evdev_device *device)
+evdev_device_set_calibration_l(struct evdev_device *device)
 {
 	struct udev *udev;
 	struct udev_device *udev_device = NULL;
@@ -657,7 +657,7 @@ out:
 }
 
 void
-evdev_device_set_output(struct evdev_device *device,
+evdev_device_set_output_l(struct evdev_device *device,
 			struct weston_output *output)
 {
 	if (device->output == output)
@@ -686,11 +686,11 @@ evdev_device_set_output(struct evdev_device *device,
 	device->output_destroy_listener.notify = notify_output_destroy;
 	wl_signal_add(&output->destroy_signal,
 		      &device->output_destroy_listener);
-	evdev_device_set_calibration(device);
+	evdev_device_set_calibration_l(device);
 }
 
 struct evdev_device *
-evdev_device_create(struct libinput_device *libinput_device,
+evdev_device_create_l(struct libinput_device *libinput_device,
 		    struct weston_seat *seat)
 {
 	struct evdev_device *device;
@@ -727,7 +727,7 @@ evdev_device_create(struct libinput_device *libinput_device,
 }
 
 void
-evdev_device_destroy(struct evdev_device *device)
+evdev_device_destroy_l(struct evdev_device *device)
 {
 	if (device->seat_caps & EVDEV_SEAT_POINTER)
 		weston_seat_release_pointer(device->seat);
@@ -747,7 +747,7 @@ evdev_device_destroy(struct evdev_device *device)
 }
 
 void
-evdev_notify_keyboard_focus(struct weston_seat *seat,
+evdev_notify_keyboard_focus_l(struct weston_seat *seat,
 			    struct wl_list *evdev_devices)
 {
 	struct wl_array keys;

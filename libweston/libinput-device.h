@@ -55,26 +55,26 @@ struct evdev_device {
 };
 
 void
-evdev_led_update(struct evdev_device *device, enum weston_led leds);
+evdev_led_update_l(struct evdev_device *device, enum weston_led leds);
 
 struct evdev_device *
-evdev_device_create(struct libinput_device *libinput_device,
+evdev_device_create_l(struct libinput_device *libinput_device,
 		    struct weston_seat *seat);
 
 int
-evdev_device_process_event(struct libinput_event *event);
+evdev_device_process_event_l(struct libinput_event *event);
 
 void
-evdev_device_set_output(struct evdev_device *device,
+evdev_device_set_output_l(struct evdev_device *device,
 			struct weston_output *output);
 void
-evdev_device_destroy(struct evdev_device *device);
+evdev_device_destroy_l(struct evdev_device *device);
 
 void
-evdev_notify_keyboard_focus(struct weston_seat *seat,
+evdev_notify_keyboard_focus_l(struct weston_seat *seat,
 			    struct wl_list *evdev_devices);
 void
-evdev_device_set_calibration(struct evdev_device *device);
+evdev_device_set_calibration_l(struct evdev_device *device);
 
 int
 dispatch_libinput(struct libinput *libinput);

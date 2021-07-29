@@ -108,13 +108,13 @@ device_added(struct udev_input *input, struct libinput_device *libinput_device)
 		return;
 
 	seat = &udev_seat->base;
-	device = evdev_device_create(libinput_device, seat);
+	device = evdev_device_create_l(libinput_device, seat);
 	if (device == NULL)
 		return;
 
 	if (input->configure_device != NULL)
 		input->configure_device(c, device->device);
-	evdev_device_set_calibration(device);
+	evdev_device_set_calibration_l(device);
 	udev_seat = (struct udev_seat *) seat;
 	wl_list_insert(udev_seat->devices_list.prev, &device->link);
 
@@ -128,12 +128,12 @@ device_added(struct udev_input *input, struct libinput_device *libinput_device)
 	if (output_name) {
 		device->output_name = strdup(output_name);
 		output = output_find_by_head_name(c, output_name);
-		evdev_device_set_output(device, output);
+		evdev_device_set_output_l(device, output);
 	} else if (!wl_list_empty(&c->output_list)) {
 		/* default assignment to an arbitrary output */
 		output = container_of(c->output_list.next,
 				      struct weston_output, link);
-		evdev_device_set_output(device, output);
+		evdev_device_set_output_l(device, output);
 	}
 
 	if (!input->suspended)
@@ -146,7 +146,7 @@ device_removed(struct udev_input *input, struct libinput_device *libinput_device
 	struct evdev_device *device;
 
 	device = libinput_device_get_user_data(libinput_device);
-	evdev_device_destroy(device);
+	evdev_device_destroy_l(device);
 }
 
 static void
@@ -155,7 +155,7 @@ udev_seat_remove_devices(struct udev_seat *seat)
 	struct evdev_device *device, *next;
 
 	wl_list_for_each_safe(device, next, &seat->devices_list, link) {
-		evdev_device_destroy(device);
+		evdev_device_destroy_l(device);
 	}
 }
 
@@ -200,7 +200,7 @@ process_event(struct libinput_event *event)
 {
 	if (udev_input_process_event(event))
 		return;
-	if (evdev_device_process_event(event))
+	if (evdev_device_process_event_l(event))
 		return;
 }
 
@@ -286,7 +286,7 @@ udev_input_enable(struct udev_input *input)
 	}
 
 	wl_list_for_each(seat, &input->compositor->seat_list, base.link) {
-		evdev_notify_keyboard_focus(&seat->base, &seat->devices_list);
+		evdev_notify_keyboard_focus_l(&seat->base, &seat->devices_list);
 
 		if (!wl_list_empty(&seat->devices_list))
 			devices_found = 1;
@@ -384,7 +384,7 @@ udev_seat_led_update(struct weston_seat *seat_base, enum weston_led leds)
 	struct evdev_device *device;
 
 	wl_list_for_each(device, &seat->devices_list, link)
-		evdev_led_update(device, leds);
+		evdev_led_update_l(device, leds);
 }
 
 static void
@@ -400,7 +400,7 @@ udev_seat_output_changed(struct udev_seat *seat, struct weston_output *output)
 		 */
 		if (!device->output_name) {
 			if (!device->output)
-				evdev_device_set_output(device, output);
+				evdev_device_set_output_l(device, output);
 
 			continue;
 		}
@@ -410,7 +410,7 @@ udev_seat_output_changed(struct udev_seat *seat, struct weston_output *output)
 		 */
 		found = output_find_by_head_name(output->compositor,
 						 device->output_name);
-		evdev_device_set_output(device, found);
+		evdev_device_set_output_l(device, found);
 	}
 }
 
