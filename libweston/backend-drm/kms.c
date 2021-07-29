@@ -1469,6 +1469,12 @@ init_kms_caps(struct drm_backend *b)
 		b->universal_planes = (ret == 0);
 	}
 
+	//OHOS fix,
+	if (!b->use_tde) {
+		b->universal_planes = 0;
+	}
+    weston_log("b->universal_planes: %{public}d", b->universal_planes);
+
 	if (b->universal_planes && !getenv("WESTON_DISABLE_ATOMIC")) {
 		ret = drmGetCap(b->drm.fd, DRM_CAP_CRTC_IN_VBLANK_EVENT, &cap);
 		if (ret != 0)
