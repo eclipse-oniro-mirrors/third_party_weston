@@ -303,6 +303,8 @@ struct drm_backend {
 	bool fb_modifiers;
 
 	struct weston_log_scope *debug;
+
+    bool use_tde; // OHOS fix
 };
 
 struct drm_mode {

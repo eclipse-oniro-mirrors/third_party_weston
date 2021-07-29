@@ -247,16 +247,21 @@ static void query_dmabuf_modifiers(struct weston_compositor *wc, int format,
     *num_modifiers = 0;
 }
 
-int tde_renderer_alloc_hook(struct pixman_renderer *renderer)
+int tde_renderer_alloc_hook(struct pixman_renderer *renderer, struct weston_compositor *ec)
 {
     renderer->tde = zalloc(sizeof(*renderer->tde));
     if (renderer->tde == NULL) {
         return -1;
     }
 
-    if (GfxInitialize(&renderer->tde->gfx_funcs) == 0) {
-        renderer->tde->use_tde = 1;
+    struct drm_backend *backend = to_drm_backend(ec);
+    if (!backend->use_tde) {
+        renderer->tde->use_tde = 0;
+    } else {
+        int ret = GfxInitialize(&renderer->tde->gfx_funcs);
+        renderer->tde->use_tde = (ret == 0 && renderer->tde->gfx_funcs != NULL) ? 1 : 0;
     }
+    weston_log("use_tde: %{public}d", renderer->tde->use_tde);
 
     renderer->base.import_dmabuf = import_dmabuf;
     renderer->base.query_dmabuf_formats = query_dmabuf_formats;
@@ -353,13 +358,16 @@ int tde_render_attach_hook(struct weston_surface *es, struct weston_buffer *buff
 
     uint32_t* ptr = (uint32_t*)mmap(NULL, stride * buffer->height, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 
-    ps->tde->image.phyaddr = drm_fd_phyaddr(es->compositor, fd);
-    drm_close_handle(es->compositor, fd);
-    if (ps->tde->image.phyaddr == 0) {
-        if (ptr) {
-            munmap(ptr, stride * buffer->height);
+    struct pixman_renderer *pr = get_renderer(es->compositor);
+    if (pr->tde->use_tde) {
+        ps->tde->image.phyaddr = drm_fd_phyaddr(es->compositor, fd);
+        drm_close_handle(es->compositor, fd);
+        if (ps->tde->image.phyaddr == 0) {
+            if (ptr) {
+                munmap(ptr, stride * buffer->height);
+            }
+            return 0;
         }
-        return 0;
     }
 
     ps->image = pixman_image_create_bits(pixman_format, buffer->width, buffer->height, ptr, stride);

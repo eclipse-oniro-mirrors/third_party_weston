@@ -172,8 +172,16 @@ drm_fb_create_dumb(struct drm_backend *b, int width, int height,
 	if (ret)
 		goto err_add_fb;
 
-	fb->map = mmap(NULL, fb->size, PROT_WRITE,
-		       MAP_SHARED, b->drm.fd, map_arg.offset);
+	if (b->use_tde) {
+		fb->map = mmap(NULL, fb->size, PROT_READ | PROT_WRITE,
+				   MAP_SHARED, b->drm.fd, map_arg.offset);
+        weston_log("use mmap");
+	} else {
+		fb->map = mmap64(NULL, fb->size, PROT_READ | PROT_WRITE,
+				   MAP_SHARED, b->drm.fd, map_arg.offset);
+        weston_log("use mmap64");
+	}
+
 	if (fb->map == MAP_FAILED)
 		goto err_add_fb;
 

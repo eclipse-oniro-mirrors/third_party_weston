@@ -822,6 +822,13 @@ drm_plane_create(struct drm_backend *b, const drmModePlane *kplane,
 	else {
 		plane->possible_crtcs = (1 << output->pipe);
 		plane->plane_id = 0;
+
+		// OHOS fix
+		if (!b->use_tde) {
+			plane->plane_id = 1;
+		}
+		weston_log("plane->plane_id: %{public}d", plane->plane_id);
+
 		plane->count_formats = 1;
 		plane->formats[0].format = format;
 		plane->type = type;
@@ -2857,6 +2864,19 @@ drm_backend_create(struct weston_compositor *compositor,
 	b->state_invalid = true;
 	b->drm.fd = -1;
 	wl_array_init(&b->unused_crtcs);
+
+	// OHOS fix
+	{
+		int fd = drmOpen("hisilicon", NULL);
+		if (fd >= 0) {
+			b->use_tde = 1;
+			drmClose(fd);
+			weston_log("tde open success, \n");
+		} else {
+			b->use_tde = 0;
+			weston_log("tde open failure\n");
+		}
+	}
 
 	b->compositor = compositor;
 	b->use_pixman = config->use_pixman;

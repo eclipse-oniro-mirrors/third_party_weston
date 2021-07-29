@@ -877,7 +877,7 @@ pixman_renderer_init(struct weston_compositor *ec)
 		return -1;
 
 	// OHOS TDE
-    tde_renderer_alloc_hook(renderer);
+    tde_renderer_alloc_hook(renderer, ec);
 
 	renderer->repaint_debug = 0;
 	renderer->debug_color = NULL;

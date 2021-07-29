@@ -29,7 +29,7 @@
 #define LIBWESTON_TDE_RENDER_PART_H
 
 // hook return 0: success, other: failure
-int tde_renderer_alloc_hook(struct pixman_renderer *renderer);
+int tde_renderer_alloc_hook(struct pixman_renderer *renderer, struct weston_compositor *ec);
 int tde_renderer_free_hook(struct pixman_renderer *renderer);
 
 int tde_output_state_alloc_hook(struct pixman_output_state *state);
