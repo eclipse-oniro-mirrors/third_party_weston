@@ -32,9 +32,6 @@
 #include <string.h>
 
 #include <display_gfx.h>
-#include <display_gralloc.h>
-#include <display_layer.h>
-#include <display_type.h>
 #include <dlfcn.h>
 #include <drm.h>
 #include <drm/drm_fourcc.h>
