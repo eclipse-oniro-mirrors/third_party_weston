@@ -130,7 +130,6 @@ ohos_shared_library("libweston") {
 
   configs = [
     ":libweston_config",
-    ":display_gfx_public_config",
   ]
 
   public_configs = [
@@ -139,8 +138,7 @@ ohos_shared_library("libweston") {
   ]
 
   deps = [
-    ":libdisplay_gfx",
-    "//foundation/graphic/standard/prebuilts/librarys/display_gralloc:libdisplay_gralloc",
+    "//drivers/peripheral/display/hal:hdi_display_gfx",
     "//third_party/libdrm:libdrm",
     "//third_party/libinput:libinput-third",
     "//utils/native/base:utils",
@@ -522,20 +520,3 @@ ohos_prebuilt_etc("weston.rc") {
 #  part_name = "graphic_standard"
 #}
 ### Build gl-renderer.so }}}
-
-## Prebuilt libdisplay_gfx.so {{{
-config("display_gfx_public_config") {
-  include_dirs = [ "//drivers/peripheral/display/interfaces/include" ]
-
-  libs = [ "//device/hisilicon/hardware/display/libs/hispark_taurus/ext/libdisplay_gfx.z.so" ]
-}
-
-ohos_prebuilt_shared_library("libdisplay_gfx") {
-  source = "//device/hisilicon/hardware/display/libs/hispark_taurus/ext/libdisplay_gfx.z.so"
-
-  public_configs = [ ":display_gfx_public_config" ]
-
-  part_name = "graphic_standard"
-  subsystem_name = "graphic"
-}
-## Prebuilt libdisplay_gfx.so }}}
