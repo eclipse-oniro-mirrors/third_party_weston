@@ -66,6 +66,12 @@ extern "C" {
 #define IVI_FAILED (-1)
 #define IVI_INVALID_ID UINT_MAX
 
+// #define USE_DUMMY_SCREEN
+#ifdef USE_DUMMY_SCREEN
+#define DUMMY_SCREEN_WIDTH (240)
+#define DUMMY_SCREEN_HEIGHT (480)
+#endif /* USE_DUMMY_SCREEN */
+
 struct ivi_layout_layer;
 struct ivi_layout_screen;
 struct ivi_layout_surface;
@@ -591,6 +597,9 @@ struct ivi_layout_interface {
 	 */
 	int32_t (*screen_remove_layer)(struct weston_output *output,
 				       struct ivi_layout_layer *removelayer);
+#ifdef USE_DUMMY_SCREEN
+	struct weston_output * (*get_dummy_output)(void);
+#endif /* USE_DUMMY_SCREEN */
 };
 
 static inline const struct ivi_layout_interface *
@@ -601,6 +610,74 @@ ivi_layout_get_api(struct weston_compositor *compositor)
 				    sizeof(struct ivi_layout_interface));
 
 	return (const struct ivi_layout_interface *)api;
+}
+
+#define IVI_LAYOUT_API_NAME_FOR_WMS "ivi_layout_api_for_wms"
+
+struct ivi_layout_interface_for_wms {
+	
+	struct ivi_layout_surface* 
+		(*surface_create)(struct weston_surface *wl_surface,
+			uint32_t id_surface);
+	void 
+		(*surface_destroy)(struct ivi_layout_surface *ivisurf);
+	
+	const struct ivi_layout_surface_properties *
+		(*get_properties_of_surface)(struct ivi_layout_surface *ivisurf);
+
+	int32_t (*surface_set_transition)(struct ivi_layout_surface *ivisurf,
+					  enum ivi_layout_transition_type type,
+					  uint32_t duration);
+	
+	int32_t (*surface_set_destination_rectangle)(struct ivi_layout_surface *ivisurf,
+						     int32_t x, int32_t y,
+						     int32_t width, int32_t height);
+	int32_t (*surface_set_source_rectangle)(struct ivi_layout_surface *ivisurf,
+						int32_t x, int32_t y,
+						int32_t width, int32_t height);
+	int32_t (*surface_set_visibility)(struct ivi_layout_surface *ivisurf,
+					  bool newVisibility);
+	int32_t (*commit_changes)(void);
+	struct ivi_layout_layer * (*get_layer_from_id)(uint32_t id_layer);
+	struct ivi_layout_layer *
+		(*layer_create_with_dimension)(uint32_t id_layer,
+					       int32_t width, int32_t height);
+	int32_t (*screen_add_layer)(struct weston_output *output,
+				    struct ivi_layout_layer *addlayer);
+	int32_t (*layer_add_surface)(struct ivi_layout_layer *ivilayer,
+				     struct ivi_layout_surface *addsurf);
+	void (*layer_remove_surface)(struct ivi_layout_layer *ivilayer,
+				     struct ivi_layout_surface *remsurf);
+	uint32_t (*surface_change_top)(struct ivi_layout_surface *ivisurf);
+	int32_t (*layer_set_visibility)(struct ivi_layout_layer *ivilayer,
+					bool newVisibility);
+#ifdef USE_DUMMY_SCREEN
+	struct weston_output * (*get_dummy_output)(void);
+#endif /* USE_DUMMY_SCREEN */
+
+	int32_t (*screen_clone)(const uint32_t screen_id_from, 
+					const uint32_t screen_id_to);
+	int32_t (*screen_clear)(const uint32_t screen_id);
+	int32_t (*surface_set_force_refresh)(struct ivi_layout_surface *ivisurf);
+	int32_t (*get_surfaces_on_layer)(struct ivi_layout_layer *ivilayer,
+					 int32_t *pLength,
+					 struct ivi_layout_surface ***ppArray);
+	int32_t (*get_layers_on_screen)(struct weston_output *output,
+					int32_t *pLength,
+					struct ivi_layout_layer ***ppArray);
+	uint32_t (*get_id_of_layer)(struct ivi_layout_layer *ivilayer);
+	uint32_t (*get_id_of_surface)(struct ivi_layout_surface *ivisurf);
+
+};
+
+static inline const struct ivi_layout_interface_for_wms *
+ivi_layout_get_api_for_wms(struct weston_compositor *compositor)
+{
+	const void *api;
+	api = weston_plugin_api_get(compositor, IVI_LAYOUT_API_NAME_FOR_WMS,
+				    sizeof(struct ivi_layout_interface_for_wms));
+
+	return (const struct ivi_layout_interface_for_wms *)api;
 }
 
 #ifdef __cplusplus

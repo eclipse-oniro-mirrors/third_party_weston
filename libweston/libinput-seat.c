@@ -43,6 +43,14 @@
 #include "libinput-seat.h"
 #include "libinput-device.h"
 #include "shared/helpers.h"
+// for multi model input
+#include "libinput-seat-export.h"
+
+static libinput_event_listener g_libinput_event_listener = NULL;
+void set_libinput_event_listener(libinput_event_listener listener)
+{
+    g_libinput_event_listener = listener;
+}
 
 static void
 process_events(struct udev_input *input);
@@ -211,6 +219,16 @@ process_events(struct udev_input *input)
 
 	while ((event = libinput_get_event(input->libinput))) {
 		process_event(event);
+		// for multi model input.
+		if (g_libinput_event_listener)
+		{
+			weston_log("process_events: call libinput_event_listener.\n");
+			g_libinput_event_listener(event);
+		}
+		else
+		{
+			weston_log("process_events: libinput_event_listener is not set.\n");
+		}
 		libinput_event_destroy(event);
 	}
 }
