@@ -72,6 +72,7 @@
 #include "shared/os-compatibility.h"
 
 #define max(a, b) ((a) > (b) ? (a) : (b))
+#define DUMMY_OUTPUT_NAME "dummy_output"
 
 struct ivi_layout;
 
@@ -101,11 +102,21 @@ struct ivi_rectangle
 
 static struct ivi_layout ivilayout = {0};
 
+#ifdef USE_DUMMY_SCREEN
+static struct weston_output dummy_output = {0};
+static struct weston_output *
+get_dummy_output(void)
+{
+	return &dummy_output;
+}
+#endif /* USE_DUMMY_SCREEN */
+
 struct ivi_layout *
 get_instance(void)
 {
 	return &ivilayout;
 }
+
 
 /**
  * Internal API to add/remove an ivi_layer to/from ivi_screen.
@@ -218,6 +229,20 @@ get_ivi_view(struct ivi_layout_layer *ivilayer,
 }
 
 static struct ivi_layout_screen *
+get_screen_from_id(const uint32_t screen_id)
+{
+	struct ivi_layout *layout = get_instance();
+	struct ivi_layout_screen *iviscrn = NULL;
+
+	wl_list_for_each(iviscrn, &layout->screen_list, link) {
+		if (iviscrn->output->id == screen_id)
+			return iviscrn;
+	}
+
+	return NULL;
+}
+
+static struct ivi_layout_screen *
 get_screen_from_output(struct weston_output *output)
 {
 	struct ivi_layout *layout = get_instance();
@@ -286,6 +311,33 @@ create_screen(struct weston_compositor *ec)
 
 		wl_list_insert(&layout->screen_list, &iviscrn->link);
 	}
+
+#ifdef USE_DUMMY_SCREEN
+	output = get_dummy_output();
+	output->id = 1;
+	output->name = DUMMY_OUTPUT_NAME;
+	output->x = DUMMY_SCREEN_WIDTH;
+	output->y = 0;
+	output->width = DUMMY_SCREEN_WIDTH;
+	output->height = DUMMY_SCREEN_HEIGHT;
+
+	iviscrn = calloc(1, sizeof *iviscrn);
+	if (iviscrn == NULL) {
+		weston_log("fails to allocate memory\n");
+		return;
+	}
+
+	iviscrn->layout = layout;
+
+	iviscrn->output = output;
+
+	wl_list_init(&iviscrn->pending.layer_list);
+
+	wl_list_init(&iviscrn->order.layer_list);
+
+	wl_list_insert(&layout->screen_list, &iviscrn->link);
+#endif /* USE_DUMMY_SCREEN */
+
 }
 
 /**
@@ -1571,6 +1623,8 @@ ivi_layout_screen_add_layer(struct weston_output *output,
 			    struct ivi_layout_layer *addlayer)
 {
 	struct ivi_layout_screen *iviscrn;
+	struct ivi_layout_layer *layer;
+	struct wl_list *p_insert = NULL;
 
 	if (output == NULL || addlayer == NULL) {
 		weston_log("ivi_layout_screen_add_layer: invalid argument\n");
@@ -1585,7 +1639,24 @@ ivi_layout_screen_add_layer(struct weston_output *output,
 		addlayer->on_screen->order.dirty = 1;
 
 	wl_list_remove(&addlayer->pending.link);
-	wl_list_insert(&iviscrn->pending.layer_list, &addlayer->pending.link);
+
+	wl_list_for_each(layer, &iviscrn->pending.layer_list, pending.link) {
+		if (addlayer->id_layer > layer->id_layer) {
+			p_insert = layer->pending.link.prev;
+			break;
+		}
+
+		if (layer->pending.link.next == &iviscrn->pending.layer_list) {
+			p_insert = &layer->pending.link;
+			break;
+		}
+	}
+
+	if (!p_insert) {
+		p_insert = &iviscrn->pending.layer_list;
+	}
+	
+	wl_list_insert(p_insert, &addlayer->pending.link);
 
 	iviscrn->order.dirty = 1;
 
@@ -1780,6 +1851,24 @@ ivi_layout_surface_set_source_rectangle(struct ivi_layout_surface *ivisurf,
 		prop->event_mask |= IVI_NOTIFICATION_SOURCE_RECT;
 	else
 		prop->event_mask &= ~IVI_NOTIFICATION_SOURCE_RECT;
+
+	return IVI_SUCCEEDED;
+}
+
+static int32_t
+ivi_layout_surface_set_force_refresh(struct ivi_layout_surface *ivisurf)
+{
+	struct ivi_layout_surface_properties *prop = NULL;
+
+	if (ivisurf == NULL) {
+		weston_log("ivi_layout_surface_set_force_refresh: invalid argument\n");
+		return IVI_FAILED;
+	}
+
+	prop = &ivisurf->pending.prop;
+
+	prop->event_mask |= IVI_NOTIFICATION_SOURCE_RECT;
+	prop->event_mask |= IVI_NOTIFICATION_DEST_RECT;
 
 	return IVI_SUCCEEDED;
 }
@@ -2017,6 +2106,7 @@ ivi_layout_surface_create(struct weston_surface *wl_surface,
 }
 
 static struct ivi_layout_interface ivi_layout_interface;
+static struct ivi_layout_interface_for_wms ivi_layout_interface_for_wms;
 
 void
 ivi_layout_init_with_compositor(struct weston_compositor *ec)
@@ -2051,6 +2141,75 @@ ivi_layout_init_with_compositor(struct weston_compositor *ec)
 	weston_plugin_api_register(ec, IVI_LAYOUT_API_NAME,
 				   &ivi_layout_interface,
 				   sizeof(struct ivi_layout_interface));
+	weston_plugin_api_register(ec, IVI_LAYOUT_API_NAME_FOR_WMS,
+				   &ivi_layout_interface_for_wms,
+				   sizeof(struct ivi_layout_interface_for_wms));
+}
+
+static int32_t
+screen_clone(const uint32_t screen_id_from, 
+			 const uint32_t screen_id_to)
+{
+	struct ivi_layout_screen *iviscrn_from = get_screen_from_id(screen_id_from);
+	struct ivi_layout_screen *iviscrn_to = get_screen_from_id(screen_id_to);
+	struct ivi_layout_layer   *ivilayer = NULL;
+	struct ivi_layout_layer   *ivilayer_new = NULL;
+	struct ivi_layout_view   *iviview = NULL;
+	struct ivi_layout_surface *ivisurf  = NULL;
+
+	if (!iviscrn_from || !iviscrn_to) {
+		weston_log("get_screen_from_id return null: invalid argument\n");
+		return IVI_FAILED;
+	}
+
+	wl_list_for_each(ivilayer, 
+			      &iviscrn_from->order.layer_list, order.link) {
+		ivilayer_new = ivi_layout_get_layer_from_id(ivilayer->id_layer + screen_id_to);
+		if (!ivilayer_new) {
+			ivilayer_new = ivi_layout_layer_create_with_dimension(
+							ivilayer->id_layer + screen_id_to, 
+							iviscrn_to->output->width, 
+							iviscrn_to->output->height);
+			if (!ivilayer_new) {
+				weston_log("ivi_layout_layer_create_with_dimension failed.");
+				return IVI_FAILED;
+			}
+			
+			ivi_layout_screen_add_layer(iviscrn_to->output, ivilayer_new);
+			ivi_layout_layer_set_visibility(ivilayer_new, true);
+		}
+
+		wl_list_for_each(iviview, &ivilayer->order.view_list, order_link) {
+			ivi_layout_layer_add_surface(ivilayer_new, 
+								iviview->ivisurf);
+		}
+	}
+
+	return IVI_SUCCEEDED;
+}
+
+static int32_t
+screen_clear(const uint32_t screen_id)
+{
+	struct ivi_layout_screen *iviscrn = get_screen_from_id(screen_id);
+	struct ivi_layout_layer   *ivilayer = NULL;
+	struct ivi_layout_view   *iviview = NULL;
+
+	if (!iviscrn) {
+		weston_log("get_screen_from_id return null: invalid argument\n");
+		return IVI_FAILED;
+	}
+
+	wl_list_for_each(ivilayer, 
+			      &iviscrn->order.layer_list, order.link) {
+		wl_list_for_each(iviview,
+				  &ivilayer->order.view_list, order_link) {
+			ivi_layout_layer_remove_surface(ivilayer, iviview->ivisurf);
+		}
+		//ivi_layout_screen_remove_layer(iviscrn->output, ivilayer);
+	}
+
+	return IVI_SUCCEEDED;
 }
 
 static struct ivi_layout_interface ivi_layout_interface = {
@@ -2124,4 +2283,61 @@ static struct ivi_layout_interface ivi_layout_interface = {
 	 */
 	.surface_get_size		= ivi_layout_surface_get_size,
 	.surface_dump			= ivi_layout_surface_dump,
+
+#ifdef USE_DUMMY_SCREEN
+	.get_dummy_output = get_dummy_output,
+#endif /* USE_DUMMY_SCREEN */
+};
+
+int32_t
+ivi_layout_surface_change_top(struct ivi_layout_surface *ivisurf)
+{
+	struct ivi_layout_view *layout_view;
+	struct ivi_layout_layer *layout_layer;
+
+	if (ivisurf == NULL) {
+		weston_log("%s: invalid argument\n", __func__);
+		return IVI_FAILED;
+	}
+
+	wl_list_for_each(layout_view, &ivisurf->view_list, surf_link) {
+		layout_layer = layout_view->on_layer;
+		if (!layout_layer) {
+			continue;
+		}
+
+		wl_list_remove(&layout_view->pending_link);
+		wl_list_insert(&layout_layer->pending.view_list, &layout_view->pending_link);
+		layout_layer->order.dirty = 1;
+	}
+
+	return IVI_SUCCEEDED;
+}
+
+static struct ivi_layout_interface_for_wms ivi_layout_interface_for_wms = {
+	.surface_create = ivi_layout_surface_create,
+	.surface_destroy = ivi_layout_surface_destroy,
+	.get_properties_of_surface = ivi_layout_get_properties_of_surface,
+	.surface_set_transition	= ivi_layout_surface_set_transition,
+	.surface_set_destination_rectangle = ivi_layout_surface_set_destination_rectangle,
+	.surface_set_source_rectangle = ivi_layout_surface_set_source_rectangle,
+	.surface_set_visibility	= ivi_layout_surface_set_visibility,
+	.commit_changes = ivi_layout_commit_changes,
+	.get_layer_from_id = ivi_layout_get_layer_from_id,
+	.layer_create_with_dimension = ivi_layout_layer_create_with_dimension,
+	.screen_add_layer = ivi_layout_screen_add_layer,
+	.layer_add_surface	= ivi_layout_layer_add_surface,
+	.layer_remove_surface	= ivi_layout_layer_remove_surface,
+	.surface_change_top = ivi_layout_surface_change_top,
+	.layer_set_visibility = ivi_layout_layer_set_visibility,
+#ifdef USE_DUMMY_SCREEN
+	.get_dummy_output = get_dummy_output,
+#endif /* USE_DUMMY_SCREEN */
+	.screen_clone = screen_clone,
+	.screen_clear = screen_clear,
+	.surface_set_force_refresh = ivi_layout_surface_set_force_refresh,
+	.get_surfaces_on_layer	 = ivi_layout_get_surfaces_on_layer,
+	.get_layers_on_screen	= ivi_layout_get_layers_on_screen,
+	.get_id_of_layer	= ivi_layout_get_id_of_layer,
+	.get_id_of_surface	= ivi_layout_get_id_of_surface,
 };
