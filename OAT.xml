@@ -12,13 +12,13 @@
      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
      See the License for the specific language governing permissions and
      limitations under the License.
-     
+
      Notes:
      This is project config file for OpenHarmony OSS Audit Tool, if you have any questions or concerns, please email chenyaxun.
 -->
 <!-- OAT(OSS Audit Tool) configuration guide:
 basedir: Root dir, the basedir + project path is the real source file location.
-licensefile: 
+licensefile:
 1.If the project don't have "LICENSE" in root dir, please define all the license files in this project in , OAT will check license files according to this rule.
 
 tasklist(only for batch mode):
@@ -34,14 +34,14 @@ policyList:
 2. policyitem: The fields type, name, path, desc is required, and the fields rule, group, filefilter is optional,the default value is:
 <policyitem type="" name="" path="" desc="" rule="may" group="defaultGroup" filefilter="defaultPolicyFilter"/>
 3. policyitem type:
-    "compatibility" is used to check license compatibility in the specified path; 
+    "compatibility" is used to check license compatibility in the specified path;
     "license" is used to check source license header in the specified path;
     "copyright" is used to check source copyright header in the specified path;
     "import" is used to check source dependency in the specified path, such as import ... ,include ...
     "filetype" is used to check file type in the specified path, supported file types: archive, binary
     "filename" is used to check whether the specified file exists in the specified path(support projectroot in default OAT.xml), supported file names: LICENSE, README, README.OpenSource
 
-4. policyitem name: This field is used for define the license, copyright, "*" means match all, the "!" prefix means could not match this value. For example, "!GPL" means can not use GPL license. 
+4. policyitem name: This field is used for define the license, copyright, "*" means match all, the "!" prefix means could not match this value. For example, "!GPL" means can not use GPL license.
 5. policyitem path: This field is used for define the source file scope to apply this policyitem, the "!" prefix means exclude the files. For example, "!.*/lib/.*" means files in lib dir will be exclude while process this policyitem.
 6. policyitem rule and group: These two fields are used together to merge policy results. "may" policyitems in the same group means any one in this group passed, the result will be passed.
 7. policyitem filefilter: Used to bind filefilter which define filter rules.
@@ -61,7 +61,9 @@ Note:If the text contains special characters, please escape them according to th
             <filefilter name="defaultPolicyFilter" desc="Filters for compatibility，license header policies">
                 <filteritem type="filename" name="README.OpenSource"/>
                 <filteritem type="filename" name="README"/>
-                <filteritem type="filename" name="helpers.h"  desc="not used in ohos"/>
+                <filteritem type="filename" name="doxygen.ini.in"  desc="not used in ohos"/>
+                <filteritem type="filename" name="COPYING"  desc="data/COPYING not used in ohos"/>
+                <filteritem type="filename" name="DCO-1.1.txt"  desc="not used in ohos"/>
             </filefilter>
             <filefilter name="copyrightPolicyFilter" desc="Filters for copyright header policies" >
                 <filteritem type="filename" name="README.OpenSource"/>
