@@ -65,6 +65,7 @@ struct tde_surface_state_t {
 
 struct tde_renderer_t {
     GfxFuncs *gfx_funcs;
+    void *module;
     int use_tde;
 };
 
@@ -73,6 +74,9 @@ struct drm_hisilicon_phy_addr {
     int fd; // dmabuf file descriptor
 };
 
+#define LIB_GFX_NAME "libdisplay_gfx.z.so"
+#define LIB_GFX_FUNC_NAME_INIT "GfxInitialize"
+#define LIB_GFX_FUNC_NAME_DEINIT "GfxUninitialize"
 #define DRM_HISILICON_GEM_FD_TO_PHYADDR (0x1)
 #define DRM_IOCTL_HISILICON_GEM_FD_TO_PHYADDR \
     (DRM_IOWR(DRM_COMMAND_BASE + DRM_HISILICON_GEM_FD_TO_PHYADDR, \
@@ -244,6 +248,47 @@ static void query_dmabuf_modifiers(struct weston_compositor *wc, int format,
     *num_modifiers = 0;
 }
 
+static int32_t tde_render_gfx_init(struct tde_renderer_t *tde)
+{
+    tde->module = dlopen(LIB_GFX_NAME, RTLD_NOW | RTLD_NOLOAD);
+	if (tde->module) {
+		weston_log("Module '%{public}s' already loaded\n", LIB_GFX_NAME);
+	} else {
+		weston_log("Loading module '%{public}s'\n", LIB_GFX_NAME);
+		tde->module = dlopen(LIB_GFX_NAME, RTLD_NOW);
+		if (!tde->module) {
+			weston_log("Failed to load module: %{public}s\n", dlerror());
+			return DISPLAY_FAILURE;
+		}
+	}
+
+    int32_t (*func)(GfxFuncs **funcs);
+    func = dlsym(tde->module, LIB_GFX_FUNC_NAME_INIT);
+    if (!func) {
+		weston_log("Failed to lookup %{public}s function: %s\n", LIB_GFX_FUNC_NAME_INIT, dlerror());
+		dlclose(tde->module);
+		return DISPLAY_FAILURE;
+	}
+
+    return func(&tde->gfx_funcs);
+}
+
+static int32_t tde_render_gfx_deinit(struct tde_renderer_t *tde)
+{
+    int32_t ret = DISPLAY_FAILURE;
+    if (tde->module) {
+        int32_t (*func)(GfxFuncs *funcs);
+        func = dlsym(tde->module, LIB_GFX_FUNC_NAME_DEINIT);
+        if (!func) {
+            weston_log("Failed to lookup %{public}s function: %s\n", LIB_GFX_FUNC_NAME_DEINIT, dlerror());
+        } else {
+            ret = func(tde->gfx_funcs);
+        }
+        dlclose(tde->module);
+    }
+    return ret;
+}
+
 int tde_renderer_alloc_hook(struct pixman_renderer *renderer, struct weston_compositor *ec)
 {
     renderer->tde = zalloc(sizeof(*renderer->tde));
@@ -255,7 +300,7 @@ int tde_renderer_alloc_hook(struct pixman_renderer *renderer, struct weston_comp
     if (!backend->use_tde) {
         renderer->tde->use_tde = 0;
     } else {
-        int ret = GfxInitialize(&renderer->tde->gfx_funcs);
+        int ret = tde_render_gfx_init(renderer->tde);
         renderer->tde->use_tde = (ret == 0 && renderer->tde->gfx_funcs != NULL) ? 1 : 0;
     }
     weston_log("use_tde: %{public}d", renderer->tde->use_tde);
@@ -268,7 +313,7 @@ int tde_renderer_alloc_hook(struct pixman_renderer *renderer, struct weston_comp
 
 int tde_renderer_free_hook(struct pixman_renderer *renderer)
 {
-    GfxUninitialize(&renderer->tde->gfx_funcs);
+    tde_render_gfx_deinit(renderer->tde);
     free(renderer->tde);
     return 0;
 }
