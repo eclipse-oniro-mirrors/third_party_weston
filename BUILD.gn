@@ -79,6 +79,9 @@ config("libweston_config") {
     "//third_party/wayland_standard/src",
     "//third_party/wayland-ivi-extension_standard/include",
     "//third_party/weston",
+    "//drivers/peripheral/base",
+    "//drivers/peripheral/display/interfaces/include",
+    "//third_party/bounds_checking_function/include",
   ]
 
   cflags = [
@@ -128,9 +131,7 @@ ohos_shared_library("libweston") {
     "libweston/zoom.c",
   ]
 
-  configs = [
-    ":libweston_config",
-  ]
+  configs = [ ":libweston_config" ]
 
   public_configs = [
     ":libweston_public_config",
@@ -138,7 +139,6 @@ ohos_shared_library("libweston") {
   ]
 
   deps = [
-    "//drivers/peripheral/display/hal:hdi_display_gfx",
     "//third_party/libdrm:libdrm",
     "//third_party/libinput:libinput-third",
     "//utils/native/base:utils",
