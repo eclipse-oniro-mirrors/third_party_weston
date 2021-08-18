@@ -131,9 +131,7 @@ ohos_shared_library("libweston") {
     "libweston/zoom.c",
   ]
 
-  configs = [
-    ":libweston_config",
-  ]
+  configs = [ ":libweston_config" ]
 
   public_configs = [
     ":libweston_public_config",
