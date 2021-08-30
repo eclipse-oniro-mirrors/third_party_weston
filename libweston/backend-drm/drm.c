@@ -48,6 +48,8 @@
 
 #include <libudev.h>
 
+#include <vsync_module_c.h> // OHOS vsync module
+
 #include <libweston/libweston.h>
 #include <libweston/backend-drm.h>
 #include <libweston/weston-log.h>
@@ -2451,6 +2453,12 @@ drm_destroy(struct weston_compositor *ec)
 	wl_array_release(&b->unused_crtcs);
 
 	DeInitWaylandDrmAuthService(); // OHOS drm auth
+
+	// OHOS vsync module
+	b->vsync_thread_running = false;
+	pthread_join(b->vsync_thread, NULL);
+	VsyncModuleStop();
+
 	close(b->drm.fd);
 	free(b->drm.filename);
 	free(b);
@@ -2837,6 +2845,27 @@ static const struct weston_drm_output_api api = {
 	drm_output_set_seat,
 };
 
+// OHOS vsync module
+static void
+ohos_drm_vsync_thread_main(void *backend)
+{
+	struct drm_backend *b = backend;
+	while (b->vsync_thread_running) {
+		drmVBlank vbl = {
+			.request = {
+				.type = DRM_VBLANK_RELATIVE,
+				.sequence = 1,
+			},
+		};
+		if (drmWaitVBlank(b->drm.fd, &vbl) != 0) {
+			weston_log("Failed to drmWaitVBlank (the first vblank event), because %{public}d", errno);
+			sleep(0);
+		} else {
+			VsyncModuleTrigger();
+		}
+	}
+}
+
 static struct drm_backend *
 drm_backend_create(struct weston_compositor *compositor,
 		   struct weston_drm_backend_config *config)
@@ -2920,6 +2949,13 @@ drm_backend_create(struct weston_compositor *compositor,
 		weston_log("no drm device found\n");
 		goto err_udev;
 	}
+
+	// OHOS vsync module
+	if (VsyncModuleStart() == 0) {
+		b->vsync_thread_running = true;
+		pthread_create(&b->vsync_thread, NULL, ohos_drm_vsync_thread_main, b);
+	}
+
 	// OHOS drm auth: init the wayland drm auth service
 	InitWaylandDrmAuthService(compositor->wl_display, b->drm.fd);
 
