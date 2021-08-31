@@ -385,7 +385,7 @@ int tde_render_attach_hook(struct weston_surface *es, struct weston_buffer *buff
         ps->image = NULL;
     }
 
-    pixman_format_code_t pixman_format = PIXMAN_a8r8g8b8;
+    pixman_format_code_t pixman_format = PIXMAN_a8b8g8r8;
     buffer->legacy_buffer = NULL;
     buffer->width = dmabuf->attributes.width;
     buffer->height = dmabuf->attributes.height;
