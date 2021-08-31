@@ -304,7 +304,9 @@ struct drm_backend {
 
 	struct weston_log_scope *debug;
 
-    bool use_tde; // OHOS fix
+	bool use_tde; // OHOS fix
+	pthread_t vsync_thread; // OHOS vsync module
+	bool vsync_thread_running; // OHOS vsync module
 };
 
 struct drm_mode {

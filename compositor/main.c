@@ -45,6 +45,7 @@
 #include <linux/input.h>
 #include <sys/time.h>
 #include <linux/limits.h>
+#include <pthread.h>
 
 #include "weston.h"
 #include <libweston/libweston.h>
@@ -54,6 +55,8 @@
 #include "git-version.h"
 #include <libweston/version.h>
 #include "weston.h"
+
+#include <vsync_module_c.h> // OHOS vsync module
 
 #include <libweston/backend-drm.h>
 #include <libweston/backend-headless.h>
@@ -3118,6 +3121,17 @@ wet_load_xwayland(struct weston_compositor *comp)
 //	}
 //}
 
+// OHOS vsync module
+static void
+ohos_soft_vsync_thread_main(void *data)
+{
+	bool *pvsync_thread_running = data;
+	while (*pvsync_thread_running == true) {
+		VsyncModuleTrigger();
+		usleep(1e6 / 60);
+	}
+}
+
 WL_EXPORT int
 wet_main(int argc, char *argv[])
 {
@@ -3158,6 +3172,10 @@ wet_main(int argc, char *argv[])
 
 	bool wait_for_debugger = false;
 	struct wl_protocol_logger *protologger = NULL;
+
+	// OHOS vsync module
+	pthread_t soft_vsync_thread;
+	bool vsync_thread_running = false;
 
 	const struct weston_option core_options[] = {
 		{ WESTON_OPTION_STRING, "backend", 'B', &backend },
@@ -3322,6 +3340,18 @@ wet_main(int argc, char *argv[])
 		goto out;
 	}
 
+	// OHOS vsync module
+	if (VsyncModuleIsRunning() == 0) { // other vsync init failed
+		weston_log("soft vsync");
+		vsync_thread_running = true;
+		if (VsyncModuleStart() == 0) {
+			pthread_create(&soft_vsync_thread,
+				       NULL, ohos_soft_vsync_thread_main, &vsync_thread_running);
+		} else {
+			weston_log("soft vsync failed");
+		}
+	}
+
 	weston_compositor_flush_heads_changed(wet.compositor);
 	// OHOS
 	// if (wet.init_failed)
@@ -3419,6 +3449,13 @@ wet_main(int argc, char *argv[])
 	ret = wet.compositor->exit_code;
 
 out:
+	// OHOS vsync module
+	if (vsync_thread_running == true) {
+		VsyncModuleStop();
+		vsync_thread_running = false;
+		pthread_join(soft_vsync_thread, NULL);
+	}
+
 	wet_compositor_destroy_layout(&wet);
 
 	/* free(NULL) is valid, and it won't be NULL if it's used */

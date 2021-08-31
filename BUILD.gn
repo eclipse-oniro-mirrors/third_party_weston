@@ -206,6 +206,7 @@ ohos_static_library("libexec_weston") {
 
   deps = [
     ":weston_screenshooter_protocol",
+    "//foundation/graphic/standard/frameworks/vsync:libvsync_module",
     "//third_party/libinput:libinput-third",
     "//third_party/wayland-protocols_standard:input_method_unstable_v1_protocol",
     "//third_party/wayland-protocols_standard:text_input_unstable_v1_protocol",
@@ -421,6 +422,7 @@ ohos_shared_library("drm-backend") {
 
   deps = [
     ":drm_auth_protocol",
+    "//foundation/graphic/standard/frameworks/vsync:libvsync_module",
     ":libweston",
     "//third_party/libdrm:libdrm",
     "//third_party/libinput:libinput-third",
