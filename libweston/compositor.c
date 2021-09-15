@@ -76,6 +76,9 @@
 #include "backend.h"
 #include "libweston-internal.h"
 
+#include "libweston/trace.h"
+DEFINE_LOG_LABEL("Compositor");
+
 // OHOS remove logger
 //#include "weston-log-internal.h"
 
@@ -1182,6 +1185,7 @@ weston_schedule_surface_protection_update(struct weston_compositor *compositor)
 static void
 weston_surface_update_output_mask(struct weston_surface *es, uint32_t mask)
 {
+    LOG_INFO("update surface %p output mask %x", es, mask);
 	uint32_t different = es->output_mask ^ mask;
 	uint32_t entered = mask & different;
 	uint32_t left = es->output_mask & different;
@@ -1266,6 +1270,7 @@ weston_view_set_output(struct weston_view *view, struct weston_output *output)
 static void
 weston_surface_assign_output(struct weston_surface *es)
 {
+    LOG_ENTER();
 	struct weston_output *new_output;
 	struct weston_view *view;
 	pixman_region32_t region;
@@ -1297,6 +1302,7 @@ weston_surface_assign_output(struct weston_surface *es)
 
 	es->output = new_output;
 	weston_surface_update_output_mask(es, mask);
+    LOG_EXIT();
 }
 
 /** Recalculate which output(s) the view is displayed on
@@ -1313,6 +1319,7 @@ weston_surface_assign_output(struct weston_surface *es)
 static void
 weston_view_assign_output(struct weston_view *ev)
 {
+    LOG_ENTER();
 	struct weston_compositor *ec = ev->surface->compositor;
 	struct weston_output *output, *new_output;
 	pixman_region32_t region;
@@ -1347,6 +1354,7 @@ weston_view_assign_output(struct weston_view *ev)
 	ev->output_mask = mask;
 
 	weston_surface_assign_output(ev->surface);
+    LOG_EXIT();
 }
 
 static void
@@ -1522,12 +1530,15 @@ get_view_layer(struct weston_view *view)
 WL_EXPORT void
 weston_view_update_transform(struct weston_view *view)
 {
+    LOG_ENTER();
 	struct weston_view *parent = view->geometry.parent;
 	struct weston_layer *layer;
 	pixman_region32_t mask;
 
-	if (!view->transform.dirty)
+	if (!view->transform.dirty) {
+        LOG_EXIT();
 		return;
+    }
 
 	if (parent)
 		weston_view_update_transform(parent);
@@ -1577,6 +1588,7 @@ weston_view_update_transform(struct weston_view *view)
 
 	wl_signal_emit(&view->surface->compositor->transform_signal,
 		       view->surface);
+    LOG_EXIT();
 }
 
 WL_EXPORT void
@@ -1677,6 +1689,7 @@ weston_view_from_global(struct weston_view *view,
 WL_EXPORT void
 weston_surface_schedule_repaint(struct weston_surface *surface)
 {
+    LOG_INFO("surface schedule repaint");
 	struct weston_output *output;
 
 	wl_list_for_each(output, &surface->compositor->output_list, link)
@@ -1693,6 +1706,7 @@ weston_surface_schedule_repaint(struct weston_surface *surface)
 WL_EXPORT void
 weston_view_schedule_repaint(struct weston_view *view)
 {
+    LOG_INFO("view schedule repaint");
 	struct weston_output *output;
 
 	wl_list_for_each(output, &view->surface->compositor->output_list, link)
@@ -1958,6 +1972,7 @@ weston_surface_is_mapped(struct weston_surface *surface)
 static void
 surface_set_size(struct weston_surface *surface, int32_t width, int32_t height)
 {
+    LOG_INFO("set width = %d, height = %d", width, height);
 	struct weston_view *view;
 
 	if (surface->width == width && surface->height == height)
@@ -2036,6 +2051,12 @@ weston_surface_update_size(struct weston_surface *surface)
 {
 	struct weston_buffer_viewport *vp = &surface->buffer_viewport;
 	int32_t width, height;
+
+    LOG_INFO("from buffer, width = %d, height = %d",
+             surface->width_from_buffer, surface->height_from_buffer);
+
+    LOG_INFO("vp->surface, width = %d, height = %d",
+             vp->surface.width, vp->surface.height);
 
 	width = surface->width_from_buffer;
 	height = surface->height_from_buffer;
@@ -2660,6 +2681,7 @@ view_list_add(struct weston_compositor *compositor,
 static void
 weston_compositor_build_view_list(struct weston_compositor *compositor)
 {
+    LOG_ENTER();
 	struct weston_view *view, *tmp;
 	struct weston_layer *layer;
 
@@ -2680,6 +2702,7 @@ weston_compositor_build_view_list(struct weston_compositor *compositor)
 	wl_list_for_each(layer, &compositor->layer_list, link)
 		wl_list_for_each(view, &layer->view_list.link, layer_link.link)
 			surface_free_unused_subsurface_views(view->surface);
+    LOG_EXIT();
 }
 
 static void
@@ -2710,6 +2733,7 @@ weston_output_take_feedback_list(struct weston_output *output,
 static int
 weston_output_repaint(struct weston_output *output, void *repaint_data)
 {
+    LOG_ENTER();
 	struct weston_compositor *ec = output->compositor;
 	struct weston_view *ev;
 	struct weston_animation *animation, *next;
@@ -2720,8 +2744,10 @@ weston_output_repaint(struct weston_output *output, void *repaint_data)
 	uint32_t frame_time_msec;
 	enum weston_hdcp_protection highest_requested = WESTON_HDCP_DISABLE;
 
-	if (output->destroying)
+	if (output->destroying) {
+        LOG_EXIT();
 		return 0;
+    }
 
 // OHOS remove timeline
 //	TL_POINT(ec, "core_repaint_begin", TLP_OUTPUT(output), TLP_END);
@@ -2805,6 +2831,7 @@ weston_output_repaint(struct weston_output *output, void *repaint_data)
 // OHOS remove timeline
 //	TL_POINT(ec, "core_repaint_posted", TLP_OUTPUT(output), TLP_END);
 
+    LOG_EXIT();
 	return r;
 }
 
@@ -2826,24 +2853,31 @@ weston_output_maybe_repaint(struct weston_output *output, struct timespec *now,
 	int64_t msec_to_repaint;
 
 	/* We're not ready yet; come back to make a decision later. */
-	if (output->repaint_status != REPAINT_SCHEDULED)
+	if (output->repaint_status != REPAINT_SCHEDULED) {
+        LOG_EXIT();
 		return ret;
+    }
 
 	msec_to_repaint = timespec_sub_to_msec(&output->next_repaint, now);
-	if (msec_to_repaint > 1)
+	if (msec_to_repaint > 1) {
+        LOG_EXIT();
 		return ret;
+    }
 
+    LOG_INFO("1");
 	/* If we're sleeping, drop the repaint machinery entirely; we will
 	 * explicitly repaint all outputs when we come back. */
 	if (compositor->state == WESTON_COMPOSITOR_SLEEPING ||
 	    compositor->state == WESTON_COMPOSITOR_OFFSCREEN)
 		goto err;
 
+    LOG_INFO("2");
 	/* We don't actually need to repaint this output; drop it from
 	 * repaint until something causes damage. */
 	if (!output->repaint_needed)
 		goto err;
 
+    LOG_INFO("3");
 	/* If repaint fails, we aren't going to get weston_output_finish_frame
 	 * to trigger a new repaint, so drop it from repaint and hope
 	 * something schedules a successful repaint later. As repainting may
@@ -2904,6 +2938,7 @@ output_repaint_timer_arm(struct weston_compositor *compositor)
 static int
 output_repaint_timer_handler(void *data)
 {
+    LOG_ENTERS("core: repaint");
 	struct weston_compositor *compositor = data;
 	struct weston_output *output;
 	struct timespec now;
@@ -2943,6 +2978,7 @@ output_repaint_timer_handler(void *data)
 
 	output_repaint_timer_arm(compositor);
 
+    LOG_EXITS("end core: repaint");
 	return 0;
 }
 
@@ -3052,12 +3088,14 @@ weston_output_finish_frame(struct weston_output *output,
 
 out:
 	output->repaint_status = REPAINT_SCHEDULED;
+    LOG_INFO("arm");
 	output_repaint_timer_arm(compositor);
 }
 
 static void
 idle_repaint(void *data)
 {
+    LOG_ENTERS("core: idle_repaint");
 	struct weston_output *output = data;
 	int ret;
 
@@ -3067,6 +3105,7 @@ idle_repaint(void *data)
 	ret = output->start_repaint_loop(output);
 	if (ret != 0)
 		weston_output_schedule_repaint_reset(output);
+    LOG_EXITS("end core: idle_repaint");
 }
 
 WL_EXPORT void
@@ -3189,12 +3228,15 @@ weston_layer_mask_is_infinite(struct weston_layer *layer)
 WL_EXPORT void
 weston_output_schedule_repaint(struct weston_output *output)
 {
+    LOG_INFO("output schedule repaint");
 	struct weston_compositor *compositor = output->compositor;
 	struct wl_event_loop *loop;
 
 	if (compositor->state == WESTON_COMPOSITOR_SLEEPING ||
-	    compositor->state == WESTON_COMPOSITOR_OFFSCREEN)
+	    compositor->state == WESTON_COMPOSITOR_OFFSCREEN) {
+        LOG_ERROR("no need idle_repaint");
 		return;
+    }
 
 // OHOS remove timeline
 //	if (!output->repaint_needed)
@@ -3207,13 +3249,16 @@ weston_output_schedule_repaint(struct weston_output *output)
 	 * no need to set it again. If the repaint has been called but
 	 * not finished, then weston_output_finish_frame() will notice
 	 * that a repaint is needed and schedule one. */
-	if (output->repaint_status != REPAINT_NOT_SCHEDULED)
+	if (output->repaint_status != REPAINT_NOT_SCHEDULED) {
+        LOG_ERROR("no need idle_repaint");
 		return;
+    }
 
 	output->repaint_status = REPAINT_BEGIN_FROM_IDLE;
 	assert(!output->idle_repaint_source);
 	output->idle_repaint_source = wl_event_loop_add_idle(loop, idle_repaint,
 							     output);
+    LOG_INFO("core: add idle_repaint source");
 // OHOS remove timeline
 //	TL_POINT(compositor, "core_repaint_enter_loop", TLP_OUTPUT(output), TLP_END);
 }
@@ -3224,6 +3269,7 @@ weston_output_schedule_repaint(struct weston_output *output)
 WL_EXPORT void
 weston_compositor_schedule_repaint(struct weston_compositor *compositor)
 {
+    LOG_INFO("compositor schedule repaint");
 	struct weston_output *output;
 
 	wl_list_for_each(output, &compositor->output_list, link)
@@ -3241,6 +3287,7 @@ surface_attach(struct wl_client *client,
 	       struct wl_resource *resource,
 	       struct wl_resource *buffer_resource, int32_t sx, int32_t sy)
 {
+    LOG_ENTER();
 	struct weston_surface *surface = wl_resource_get_user_data(resource);
 	struct weston_buffer *buffer = NULL;
 
@@ -3248,6 +3295,7 @@ surface_attach(struct wl_client *client,
 		buffer = weston_buffer_from_resource(buffer_resource);
 		if (buffer == NULL) {
 			wl_client_post_no_memory(client);
+            LOG_EXIT();
 			return;
 		}
 	}
@@ -3259,6 +3307,7 @@ surface_attach(struct wl_client *client,
 	surface->pending.sx = sx;
 	surface->pending.sy = sy;
 	surface->pending.newly_attached = 1;
+    LOG_EXIT();
 }
 
 static void
@@ -3661,8 +3710,11 @@ weston_surface_commit_state(struct weston_surface *surface,
 
 	if (state->newly_attached || state->buffer_viewport.changed) {
 		weston_surface_update_size(surface);
+        LOG_INFO("surface->committed: %p", surface->committed);
+        LOG_ENTERS("surface->committed");
 		if (surface->committed)
 			surface->committed(surface, state->sx, state->sy);
+        LOG_EXITS("surface->committed");
 	}
 
 	state->sx = 0;
@@ -3731,11 +3783,13 @@ weston_surface_commit_state(struct weston_surface *surface,
 static void
 weston_surface_commit(struct weston_surface *surface)
 {
+    LOG_ENTER();
 	weston_surface_commit_state(surface, &surface->pending);
 
 	weston_surface_commit_subsurface_order(surface);
 
 	weston_surface_schedule_repaint(surface);
+    LOG_EXIT();
 }
 
 static void
@@ -3748,6 +3802,7 @@ weston_subsurface_parent_commit(struct weston_subsurface *sub,
 static void
 surface_commit(struct wl_client *client, struct wl_resource *resource)
 {
+    LOG_ENTER();
 	struct weston_surface *surface = wl_resource_get_user_data(resource);
 	struct weston_subsurface *sub = weston_surface_to_subsurface(surface);
 
@@ -3758,6 +3813,7 @@ surface_commit(struct wl_client *client, struct wl_resource *resource)
 			WP_VIEWPORT_ERROR_OUT_OF_BUFFER,
 			"wl_surface@%d has viewport source outside buffer",
 			wl_resource_get_id(resource));
+        LOG_EXIT();
 		return;
 	}
 
@@ -3768,6 +3824,7 @@ surface_commit(struct wl_client *client, struct wl_resource *resource)
 			WP_VIEWPORT_ERROR_BAD_SIZE,
 			"wl_surface@%d viewport dst size not integer",
 			wl_resource_get_id(resource));
+        LOG_EXIT();
 		return;
 	}
 
@@ -3780,6 +3837,7 @@ surface_commit(struct wl_client *client, struct wl_resource *resource)
 				ZWP_LINUX_SURFACE_SYNCHRONIZATION_V1_ERROR_NO_BUFFER,
 				"wl_surface@%"PRIu32" no buffer for synchronization",
 				wl_resource_get_id(resource));
+            LOG_EXIT();
 			return;
 		}
 
@@ -3796,6 +3854,7 @@ surface_commit(struct wl_client *client, struct wl_resource *resource)
 				ZWP_LINUX_SURFACE_SYNCHRONIZATION_V1_ERROR_UNSUPPORTED_BUFFER,
 				"wl_surface@%"PRIu32" unsupported buffer for synchronization",
 				wl_resource_get_id(resource));
+            LOG_EXIT();
 			return;
 		}
 	}
@@ -3808,11 +3867,13 @@ surface_commit(struct wl_client *client, struct wl_resource *resource)
 			ZWP_LINUX_SURFACE_SYNCHRONIZATION_V1_ERROR_NO_BUFFER,
 			"wl_surface@%"PRIu32" no buffer for synchronization",
 			wl_resource_get_id(resource));
+        LOG_EXIT();
 		return;
 	}
 
 	if (sub) {
 		weston_subsurface_commit(sub);
+        LOG_EXIT();
 		return;
 	}
 
@@ -3822,6 +3883,7 @@ surface_commit(struct wl_client *client, struct wl_resource *resource)
 		if (sub->surface != surface)
 			weston_subsurface_parent_commit(sub, 0);
 	}
+    LOG_EXIT();
 }
 
 static void
@@ -5302,20 +5364,30 @@ WL_EXPORT int
 weston_output_attach_head(struct weston_output *output,
 			  struct weston_head *head)
 {
+    LOG_ENTER();
 	char *head_names;
 
-	if (!wl_list_empty(&head->output_link))
+	if (!wl_list_empty(&head->output_link)) {
+        LOG_ERROR("head already have output");
+        LOG_EXIT();
 		return -1;
+    }
 
 	if (output->attach_head) {
-		if (output->attach_head(output, head) < 0)
+		if (output->attach_head(output, head) < 0) {
+            LOG_ERROR("this->attach_head(head) failed");
+            LOG_EXIT();
 			return -1;
+        }
 	} else if (!wl_list_empty(&output->head_list)) {
 		/* No support for clones in the legacy path. */
+        LOG_ERROR("output already have head");
+        LOG_EXIT();
 		return -1;
 	}
 
 	head->output = output;
+    LOG_INFO("this->head_list.push_back(head)");
 	wl_list_insert(output->head_list.prev, &head->output_link);
 
 	if (output->enabled) {
@@ -5329,6 +5401,7 @@ weston_output_attach_head(struct weston_output *output,
 		weston_output_emit_heads_changed(output);
 	}
 
+    LOG_EXIT();
 	return 0;
 }
 
@@ -6261,6 +6334,7 @@ weston_output_init(struct weston_output *output,
 	output->desired_protection = WESTON_HDCP_DISABLE;
 	output->allow_protection = true;
 
+    LOG_INFO("this->head_list.clear()");
 	wl_list_init(&output->head_list);
 
 	/* Add some (in)sane defaults which can be used
@@ -6424,7 +6498,7 @@ weston_output_enable(struct weston_output *output)
 	 * renderer, etc)
 	 */
 	if (output->enable(output) < 0) {
-		weston_log("Enabling output \"%s\" failed.\n", output->name);
+		weston_log("Enabling output \"%{public}s\" failed.\n", output->name);
 		return -1;
 	}
 
@@ -7355,6 +7429,7 @@ weston_compositor_create(struct wl_display *display,
 //			 struct weston_log_context *log_ctx,
 			 void *user_data)
 {
+    LOG_ENTER();
 	struct weston_compositor *ec;
 	struct wl_event_loop *loop;
 
@@ -7363,8 +7438,10 @@ weston_compositor_create(struct wl_display *display,
 //		return NULL;
 
 	ec = zalloc(sizeof *ec);
-	if (!ec)
+	if (!ec) {
+        LOG_EXIT();
 		return NULL;
+    }
 
 // OHOS remove logger
 //	ec->weston_log_ctx = log_ctx;
@@ -7471,10 +7548,12 @@ weston_compositor_create(struct wl_display *display,
 //						weston_timeline_create_subscription,
 //						weston_timeline_destroy_subscription,
 //						ec);
+    LOG_EXIT();
 	return ec;
 
 fail:
 	free(ec);
+    LOG_EXIT();
 	return NULL;
 }
 
@@ -7752,10 +7831,10 @@ weston_load_module(const char *name, const char *entrypoint)
 	if (module) {
 		weston_log("Module '%s' already loaded\n", path);
 	} else {
-		weston_log("Loading module '%s'\n", path);
+		weston_log("Loading module '%{public}s'\n", path);
 		module = dlopen(path, RTLD_NOW);
 		if (!module) {
-			weston_log("Failed to load module: %s\n", dlerror());
+			weston_log("Failed to load module: %{public}s\n", dlerror());
 			return NULL;
 		}
 	}
@@ -7881,6 +7960,7 @@ static const char * const backend_map[] = {
 	[WESTON_BACKEND_RDP] =		"rdp-backend.so",
 	[WESTON_BACKEND_WAYLAND] =	"wayland-backend.so",
 	[WESTON_BACKEND_X11] =		"x11-backend.so",
+	[WESTON_BACKEND_HDI] =	"hdi-backend.so",
 };
 
 /** Load a backend into a weston_compositor
