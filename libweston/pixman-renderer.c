@@ -552,6 +552,8 @@ pixman_renderer_repaint_output(struct weston_output *output,
 			       pixman_region32_t *output_damage)
 {
 	struct pixman_output_state *po = get_output_state(output);
+    // OHOS TDE
+    tde_output_state_init_hook(po);
 	pixman_region32_t hw_damage;
 
 	if (!po->hw_buffer) {
@@ -596,7 +598,7 @@ buffer_state_handle_buffer_destroy(struct wl_listener *listener, void *data)
 			  buffer_destroy_listener);
 
 	if (ps->image) {
-        tde_unref_image_hook(ps->image);
+        tde_unref_image_hook(ps);
 		pixman_image_unref(ps->image);
 		ps->image = NULL;
 	}
@@ -694,7 +696,7 @@ pixman_renderer_surface_state_destroy(struct pixman_surface_state *ps)
 	ps->surface->renderer_state = NULL;
 
 	if (ps->image) {
-        tde_unref_image_hook(ps->image);
+        tde_unref_image_hook(ps);
 		pixman_image_unref(ps->image);
 		ps->image = NULL;
 	}
@@ -768,7 +770,7 @@ pixman_renderer_surface_set_color(struct weston_surface *es,
 	color.alpha = alpha * 0xffff;
 
 	if (ps->image) {
-        tde_unref_image_hook(ps->image);
+        tde_unref_image_hook(ps);
 		pixman_image_unref(ps->image);
 		ps->image = NULL;
 	}

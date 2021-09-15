@@ -74,6 +74,9 @@
 #define max(a, b) ((a) > (b) ? (a) : (b))
 #define DUMMY_OUTPUT_NAME "dummy_output"
 
+#include "libweston/trace.h"
+DEFINE_LOG_LABEL("IVILayout");
+
 struct ivi_layout;
 
 struct ivi_layout_screen {
@@ -607,6 +610,7 @@ calc_surface_to_global_matrix_and_mask_to_weston_surface(
 static void
 update_prop(struct ivi_layout_view *ivi_view)
 {
+    LOG_ENTER();
 	struct ivi_layout_surface *ivisurf = ivi_view->ivisurf;
 	struct ivi_layout_layer *ivilayer = ivi_view->on_layer;
 	struct ivi_layout_screen *iviscrn = ivilayer->on_screen;
@@ -614,8 +618,12 @@ update_prop(struct ivi_layout_view *ivi_view)
 	bool can_calc = true;
 
 	/*In case of no prop change, this just returns*/
-	if (!ivilayer->prop.event_mask && !ivisurf->prop.event_mask)
+	if (!ivilayer->prop.event_mask && !ivisurf->prop.event_mask) {
+        LOG_ERROR("no prop change");
+        LOG_EXIT();
 		return;
+    }
+    LOG_INFO("prop change");
 
 	update_opacity(ivilayer, ivisurf, ivi_view->view);
 
@@ -648,6 +656,7 @@ update_prop(struct ivi_layout_view *ivi_view)
 	ivisurf->update_count++;
 
 	weston_view_schedule_repaint(ivi_view->view);
+    LOG_EXIT();
 }
 
 static bool
@@ -662,6 +671,7 @@ ivi_view_is_mapped(struct ivi_layout_view *ivi_view)
 static void
 commit_changes(struct ivi_layout *layout)
 {
+    LOG_PASS();
 	struct ivi_layout_view *ivi_view  = NULL;
 
 	wl_list_for_each(ivi_view, &layout->view_list, link) {
@@ -669,9 +679,11 @@ commit_changes(struct ivi_layout *layout)
 		 * If the view is not on the currently rendered scenegraph,
 		 * we do not need to update its properties.
 		 */
+        LOG_PASS();
 		if (!ivi_view_is_mapped(ivi_view))
 			continue;
 
+        LOG_PASS();
 		update_prop(ivi_view);
 	}
 }
@@ -1858,6 +1870,7 @@ ivi_layout_surface_set_source_rectangle(struct ivi_layout_surface *ivisurf,
 static int32_t
 ivi_layout_surface_set_force_refresh(struct ivi_layout_surface *ivisurf)
 {
+    LOG_PASS();
 	struct ivi_layout_surface_properties *prop = NULL;
 
 	if (ivisurf == NULL) {
@@ -1876,6 +1889,7 @@ ivi_layout_surface_set_force_refresh(struct ivi_layout_surface *ivisurf)
 int32_t
 ivi_layout_commit_changes(void)
 {
+    LOG_ENTER();
 	struct ivi_layout *layout = get_instance();
 
 	commit_surface_list(layout);
@@ -1888,6 +1902,7 @@ ivi_layout_commit_changes(void)
 	commit_changes(layout);
 	send_prop(layout);
 
+    LOG_EXIT();
 	return IVI_SUCCEEDED;
 }
 
@@ -2111,6 +2126,7 @@ static struct ivi_layout_interface_for_wms ivi_layout_interface_for_wms;
 void
 ivi_layout_init_with_compositor(struct weston_compositor *ec)
 {
+    LOG_PASS();
 	struct ivi_layout *layout = get_instance();
 
 	layout->compositor = ec;

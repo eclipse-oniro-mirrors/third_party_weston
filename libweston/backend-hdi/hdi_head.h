@@ -23,36 +23,25 @@
  * SOFTWARE.
  */
 
-#ifndef LIBWESTON_TDE_RENDER_PART_H
-#define LIBWESTON_TDE_RENDER_PART_H
+#ifndef LIBWESTON_BACKEND_HDI_HDI_HEAD
+#define LIBWESTON_BACKEND_HDI_HDI_HEAD
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#include "pixman-renderer-protected.h"
+#include <stdint.h>
 
-// hook return 0: success, other: failure
-int tde_renderer_alloc_hook(struct pixman_renderer *renderer, struct weston_compositor *ec);
-int tde_renderer_free_hook(struct pixman_renderer *renderer);
+struct hdi_head;
+struct weston_compositor;
+struct weston_head;
 
-int tde_output_state_alloc_hook(struct pixman_output_state *state);
-int tde_output_state_init_hook(struct pixman_output_state *state);
-int tde_output_state_free_hook(struct pixman_output_state *state);
-
-int tde_surface_state_alloc_hook(struct pixman_surface_state *state);
-int tde_surface_state_free_hook(struct pixman_surface_state *state);
-
-int tde_render_attach_hook(struct weston_surface *es, struct weston_buffer *buffer);
-
-int tde_repaint_region_hook(struct weston_view *ev, struct weston_output *output,
-                         pixman_region32_t *buffer_region,
-                         pixman_region32_t *repaint_output);
-
-int tde_unref_image_hook(struct pixman_surface_state *ps);
+int hdi_head_create(struct weston_compositor *compositor, uint32_t device_id);
+void hdi_head_destroy(struct weston_head *base);
+uint32_t hdi_head_get_device_id(struct weston_head *base);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // LIBWESTON_TDE_RENDER_PART_H
+#endif // LIBWESTON_BACKEND_HDI_HDI_HEAD

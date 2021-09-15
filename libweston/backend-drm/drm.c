@@ -69,6 +69,9 @@
 #include "linux-explicit-synchronization.h"
 #include "wayland_drm_auth_server.h" // OHOS drm auth
 
+#include "libweston/trace.h"
+DEFINE_LOG_LABEL("DrmBackend");
+
 static const char default_seat[] = "seat0";
 
 static void
@@ -322,6 +325,7 @@ drm_output_update_complete(struct drm_output *output, uint32_t flags,
 
 	ts.tv_sec = sec;
 	ts.tv_nsec = usec * 1000;
+    LOG_PASS();
 	weston_output_finish_frame(&output->base, &ts, flags);
 
 	/* We can't call this from frame_notify, because the output's
@@ -574,6 +578,7 @@ drm_output_start_repaint_loop(struct weston_output *output_base)
 			millihz_to_nsec(output->base.current_mode->refresh);
 		if (timespec_to_nsec(&vbl2now) < refresh_nsec) {
 			drm_output_update_msc(output, vbl.reply.sequence);
+            LOG_PASS();
 			weston_output_finish_frame(output_base, &ts,
 						WP_PRESENTATION_FEEDBACK_INVALID);
 			return 0;
@@ -604,6 +609,7 @@ drm_output_start_repaint_loop(struct weston_output *output_base)
 
 finish_frame:
 	/* if we cannot page-flip, immediately finish frame */
+    LOG_PASS();
 	weston_output_finish_frame(output_base, NULL,
 				   WP_PRESENTATION_FEEDBACK_INVALID);
 	return 0;
