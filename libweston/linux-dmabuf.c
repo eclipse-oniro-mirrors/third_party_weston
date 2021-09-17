@@ -46,6 +46,10 @@ linux_dmabuf_buffer_destroy(struct linux_dmabuf_buffer *buffer)
 	}
 
 	buffer->attributes.n_planes = 0;
+
+	if (buffer->attributes.buffer_handle != NULL) {
+        free(buffer->attributes.buffer_handle);
+	}
 	free(buffer);
 }
 
@@ -120,6 +124,54 @@ params_add(struct wl_client *client,
 							 modifier_lo;
 
 	buffer->attributes.n_planes++;
+}
+
+static void
+params_add_buffer_handle(struct wl_client *client, struct wl_resource *params_resource,
+	int32_t fd, int32_t width, int32_t stride, int32_t height, int32_t size,
+	int32_t format, uint32_t usage_hi, uint32_t usage_lo, uint32_t phyaddr_hi,
+	uint32_t phyaddr_lo, int32_t key, struct wl_array *reservefds, struct wl_array *reserveints)
+{
+	struct linux_dmabuf_buffer *buffer;
+	buffer = wl_resource_get_user_data(params_resource);
+	if (!buffer) {
+		wl_resource_post_error(params_resource,
+			ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_ALREADY_USED,
+			"params was already used to create a wl_buffer");
+		return;
+	}
+
+	uint32_t reserveFds = reservefds->size / sizeof(uint32_t);
+	uint32_t reserveInts = reserveints->size / sizeof(uint32_t);
+
+	buffer->attributes.buffer_handle = zalloc((sizeof(BufferHandle)) + (reserveFds + reserveInts) * sizeof(int32_t));
+	if (!buffer->attributes.buffer_handle) {
+		wl_resource_post_no_memory(params_resource);
+		return;
+	}
+
+	buffer->attributes.buffer_handle->fd = buffer->attributes.fd[0];
+	buffer->attributes.buffer_handle->width = width;
+	buffer->attributes.buffer_handle->stride = stride;
+	buffer->attributes.buffer_handle->height = height;
+	buffer->attributes.buffer_handle->size = size;
+	buffer->attributes.buffer_handle->format = format;
+	buffer->attributes.buffer_handle->usage = ((uint64_t)(usage_hi) << 32) | usage_lo;
+	buffer->attributes.buffer_handle->phyAddr = ((uint64_t)(phyaddr_hi) << 32) | phyaddr_lo;;
+	buffer->attributes.buffer_handle->key = key;
+	buffer->attributes.buffer_handle->reserveFds = reserveFds;
+	buffer->attributes.buffer_handle->reserveInts = reserveInts;
+
+	uint32_t *p;
+	int i = 0;
+	wl_array_for_each(p, reservefds) {
+		buffer->attributes.buffer_handle->reserve[i] = *p;
+		i++;
+	}
+	wl_array_for_each(p, reserveints) {
+		buffer->attributes.buffer_handle->reserve[i] = *p;
+		i++;
+	}
 }
 
 static void
@@ -342,6 +394,7 @@ static const struct zwp_linux_buffer_params_v1_interface
 zwp_linux_buffer_params_implementation = {
 	params_destroy,
 	params_add,
+	params_add_buffer_handle,
 	params_create,
 	params_create_immed
 };

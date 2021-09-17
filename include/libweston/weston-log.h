@@ -134,9 +134,9 @@
 //
 //void
 //weston_log_flight_recorder_display_buffer(FILE *file);
-
-#ifdef  __cplusplus
-}
-#endif
+//
+//#ifdef  __cplusplus
+//}
+//#endif
 
 #endif /* WESTON_LOG_H */

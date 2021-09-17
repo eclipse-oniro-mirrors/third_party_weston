@@ -23,36 +23,42 @@
  * SOFTWARE.
  */
 
-#ifndef LIBWESTON_TDE_RENDER_PART_H
-#define LIBWESTON_TDE_RENDER_PART_H
+#ifndef WESTON_COMPOSITOR_HDI_H
+#define WESTON_COMPOSITOR_HDI_H
 
-#ifdef __cplusplus
+#ifdef  __cplusplus
 extern "C" {
 #endif
 
-#include "pixman-renderer-protected.h"
+#include <stdint.h>
 
-// hook return 0: success, other: failure
-int tde_renderer_alloc_hook(struct pixman_renderer *renderer, struct weston_compositor *ec);
-int tde_renderer_free_hook(struct pixman_renderer *renderer);
+#include "libweston/libweston.h"
+#include "libweston/plugin-registry.h"
+#include "libweston/libinput-seat.h"
 
-int tde_output_state_alloc_hook(struct pixman_output_state *state);
-int tde_output_state_init_hook(struct pixman_output_state *state);
-int tde_output_state_free_hook(struct pixman_output_state *state);
+#define WESTON_HDI_BACKEND_CONFIG_VERSION 2
+#define WESTON_HDI_OUTPUT_API_NAME "weston_hdi_output_api_v1"
 
-int tde_surface_state_alloc_hook(struct pixman_surface_state *state);
-int tde_surface_state_free_hook(struct pixman_surface_state *state);
+struct weston_hdi_backend_config {
+	struct weston_backend_config base;
+	bool use_hdi;
+	void (*configure_device)(struct weston_compositor *compositor,
+				 struct libinput_device *device);
+};
 
-int tde_render_attach_hook(struct weston_surface *es, struct weston_buffer *buffer);
+struct weston_hdi_output_api {
+    int (*set_mode)(struct weston_output *output);
+};
 
-int tde_repaint_region_hook(struct weston_view *ev, struct weston_output *output,
-                         pixman_region32_t *buffer_region,
-                         pixman_region32_t *repaint_output);
+static inline const struct weston_hdi_output_api *
+weston_hdi_output_get_api(struct weston_compositor *compositor)
+{
+    return (const struct weston_hdi_output_api *)weston_plugin_api_get(
+        compositor, WESTON_HDI_OUTPUT_API_NAME, sizeof(struct weston_hdi_output_api));
+}
 
-int tde_unref_image_hook(struct pixman_surface_state *ps);
-
-#ifdef __cplusplus
+#ifdef  __cplusplus
 }
 #endif
 
-#endif // LIBWESTON_TDE_RENDER_PART_H
+#endif /* WESTON_COMPOSITOR_HDI_H */

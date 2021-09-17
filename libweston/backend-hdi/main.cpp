@@ -23,36 +23,32 @@
  * SOFTWARE.
  */
 
-#ifndef LIBWESTON_TDE_RENDER_PART_H
-#define LIBWESTON_TDE_RENDER_PART_H
+#include <memory.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include "libweston/libweston.h"
+#include "libweston/backend-hdi.h"
 
-#include "pixman-renderer-protected.h"
+#include "hdi_backend.h"
 
-// hook return 0: success, other: failure
-int tde_renderer_alloc_hook(struct pixman_renderer *renderer, struct weston_compositor *ec);
-int tde_renderer_free_hook(struct pixman_renderer *renderer);
+#include "libweston/trace.h"
+DEFINE_LOG_LABEL("HdiModule");
 
-int tde_output_state_alloc_hook(struct pixman_output_state *state);
-int tde_output_state_init_hook(struct pixman_output_state *state);
-int tde_output_state_free_hook(struct pixman_output_state *state);
+WL_EXPORT int
+weston_backend_init(struct weston_compositor *compositor,
+            struct weston_backend_config *config_base)
+{
+    LOG_ENTER();
+    if (config_base == NULL ||
+        config_base->struct_version != WESTON_HDI_BACKEND_CONFIG_VERSION ||
+        config_base->struct_size > sizeof(struct weston_hdi_backend_config)) {
+        weston_log("hdi backend config structure is invalid\n");
+        LOG_EXIT();
+        return -1;
+    }
 
-int tde_surface_state_alloc_hook(struct pixman_surface_state *state);
-int tde_surface_state_free_hook(struct pixman_surface_state *state);
-
-int tde_render_attach_hook(struct weston_surface *es, struct weston_buffer *buffer);
-
-int tde_repaint_region_hook(struct weston_view *ev, struct weston_output *output,
-                         pixman_region32_t *buffer_region,
-                         pixman_region32_t *repaint_output);
-
-int tde_unref_image_hook(struct pixman_surface_state *ps);
-
-#ifdef __cplusplus
+    struct weston_hdi_backend_config config;
+    memcpy(&config, config_base, config_base->struct_size);
+    struct hdi_backend *b = hdi_backend_create(compositor, &config);
+    LOG_EXIT();
+    return b != NULL ? 0 : -1;
 }
-#endif
-
-#endif // LIBWESTON_TDE_RENDER_PART_H

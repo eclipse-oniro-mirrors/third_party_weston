@@ -28,6 +28,8 @@
 
 #include <stdint.h>
 
+#include "buffer_handle.h"
+
 #define MAX_DMABUF_PLANES 4
 #ifndef DRM_FORMAT_MOD_INVALID
 #define DRM_FORMAT_MOD_INVALID ((1ULL<<56) - 1)
@@ -45,6 +47,7 @@ struct dmabuf_attributes {
 	int32_t height;
 	uint32_t format;
 	uint32_t flags; /* enum zlinux_buffer_params_flags */
+	BufferHandle *buffer_handle;
 	int n_planes;
 	int fd[MAX_DMABUF_PLANES];
 	uint32_t offset[MAX_DMABUF_PLANES];
