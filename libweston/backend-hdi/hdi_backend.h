@@ -23,36 +23,54 @@
  * SOFTWARE.
  */
 
-#ifndef LIBWESTON_TDE_RENDER_PART_H
-#define LIBWESTON_TDE_RENDER_PART_H
+#ifndef LIBWESTON_BACKEND_HDI_HDI_BACKEND_H
+#define LIBWESTON_BACKEND_HDI_HDI_BACKEND_H
+
+#include <display_device.h>
+#include <display_layer.h>
+#include <display_gralloc.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#include "pixman-renderer-protected.h"
+#include "libinput-seat.h"
+#include "libweston/libweston.h"
+#include "libweston/backend.h"
+#include "linux-dmabuf.h"
 
-// hook return 0: success, other: failure
-int tde_renderer_alloc_hook(struct pixman_renderer *renderer, struct weston_compositor *ec);
-int tde_renderer_free_hook(struct pixman_renderer *renderer);
+struct weston_hdi_backend_config;
 
-int tde_output_state_alloc_hook(struct pixman_output_state *state);
-int tde_output_state_init_hook(struct pixman_output_state *state);
-int tde_output_state_free_hook(struct pixman_output_state *state);
+enum hdi_renderer_type {
+    HDI_RENDERER_HDI,
+};
 
-int tde_surface_state_alloc_hook(struct pixman_surface_state *state);
-int tde_surface_state_free_hook(struct pixman_surface_state *state);
+struct hdi_backend {
+    struct weston_backend base;
+    struct weston_compositor *compositor;
+    enum hdi_renderer_type renderer_type;
+    DeviceFuncs *device_funcs;
+    LayerFuncs *layer_funcs;
+    GrallocFuncs *gralloc_funcs;
+    struct udev_input input;
+    struct udev *udev;
+};
 
-int tde_render_attach_hook(struct weston_surface *es, struct weston_buffer *buffer);
+struct hdi_pending_state {
+    struct hdi_backend *backend;
+    int device_id;
+    BufferHandle *framebuffer;
+};
 
-int tde_repaint_region_hook(struct weston_view *ev, struct weston_output *output,
-                         pixman_region32_t *buffer_region,
-                         pixman_region32_t *repaint_output);
+struct hdi_backend *
+to_hdi_backend(struct weston_compositor *base);
 
-int tde_unref_image_hook(struct pixman_surface_state *ps);
+struct hdi_backend *
+hdi_backend_create(struct weston_compositor *compositor,
+            struct weston_hdi_backend_config *config);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // LIBWESTON_TDE_RENDER_PART_H
+#endif // LIBWESTON_BACKEND_HDI_HDI_BACKEND_H

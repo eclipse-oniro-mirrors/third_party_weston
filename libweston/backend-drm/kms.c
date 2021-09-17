@@ -42,6 +42,9 @@
 #include "pixel-formats.h"
 #include "presentation-time-server-protocol.h"
 
+#include "libweston/trace.h"
+DEFINE_LOG_LABEL("KMS");
+
 #ifndef DRM_FORMAT_MOD_LINEAR
 #define DRM_FORMAT_MOD_LINEAR 0
 #endif
@@ -705,6 +708,7 @@ drm_output_apply_state_legacy(struct drm_output_state *state)
 
 		drm_output_assign_state(state, DRM_STATE_APPLY_SYNC);
 		weston_compositor_read_presentation_clock(output->base.compositor, &now);
+        LOG_PASS();
 		drm_output_update_complete(output,
 		                           WP_PRESENTATION_FEEDBACK_KIND_HW_COMPLETION,
 					   now.tv_sec, now.tv_nsec / 1000);
@@ -1384,6 +1388,7 @@ page_flip_handler(int fd, unsigned int frame,
 	assert(output->page_flip_pending);
 	output->page_flip_pending = false;
 
+    LOG_PASS();
 	drm_output_update_complete(output, flags, sec, usec);
 }
 
@@ -1410,6 +1415,7 @@ atomic_flip_handler(int fd, unsigned int frame, unsigned int sec,
 	assert(output->atomic_complete_pending);
 	output->atomic_complete_pending = false;
 
+    LOG_PASS();
 	drm_output_update_complete(output, flags, sec, usec);
 	drm_debug(b, "[atomic][CRTC:%u] flip processing completed\n", crtc_id);
 }
