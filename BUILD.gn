@@ -1,3 +1,16 @@
+# Copyright (c) 2021 Huawei Device Co., Ltd.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import("//build/ohos.gni")
 import("//third_party/wayland_standard/wayland_protocol.gni")
 
@@ -58,8 +71,6 @@ config("libshared_config") {
 
 config("libshared_public_config") {
   include_dirs = [ "shared" ]
-
-  cflags = []
 }
 
 ohos_static_library("libshared") {
@@ -111,8 +122,6 @@ config("libweston_public_config") {
     "libweston/backend-drm",
     "//third_party/bounds_checking_function/include",
   ]
-
-  cflags = []
 }
 
 ohos_shared_library("libweston") {
@@ -197,13 +206,12 @@ config("libexec_weston_config") {
     "-Wno-unused-parameter",
     "-Wno-missing-field-initializers",
     "-Wno-unused-variable",
+    "-Wno-incompatible-pointer-types",
   ]
 }
 
 config("libexec_weston_public_config") {
   include_dirs = []
-
-  cflags = []
 }
 
 ohos_static_library("libexec_weston") {
@@ -248,8 +256,6 @@ config("weston_config") {
 
 config("weston_public_config") {
   include_dirs = []
-
-  cflags = []
 }
 
 ohos_executable("weston") {
@@ -289,8 +295,6 @@ config("libweston-desktop_config") {
 
 config("libweston-desktop_public_config") {
   include_dirs = [ "include/libweston-desktop" ]
-
-  cflags = []
 }
 
 ohos_shared_library("libweston-desktop") {
@@ -332,13 +336,13 @@ config("ivi-shell_config") {
     "-Wall",
     "-Werror",
     "-Wno-unused-function",
+    "-Wno-unused-variable",
+    "-Wno-incompatible-pointer-types",
   ]
 }
 
 config("ivi-shell_public_config") {
   include_dirs = []
-
-  cflags = []
 }
 
 ohos_shared_library("ivi-shell") {
@@ -392,8 +396,6 @@ config("drm-backend_config") {
 
 config("drm-backend_public_config") {
   include_dirs = []
-
-  cflags = []
 }
 
 ohos_shared_library("drm-backend") {
@@ -566,9 +568,6 @@ ohos_shared_library("trace") {
 #
 #config("gl-renderer_public_config") {
 #  include_dirs = [
-#  ]
-#
-#  cflags = [
 #  ]
 #}
 #
