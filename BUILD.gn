@@ -218,6 +218,7 @@ ohos_static_library("libexec_weston") {
   public_configs = [ ":libexec_weston_public_config" ]
 
   deps = [
+    ":soft_vsync",
     ":trace",
     ":weston_screenshooter_protocol",
     "//foundation/graphic/standard/frameworks/vsync:libvsync_module",
@@ -423,6 +424,7 @@ ohos_shared_library("drm-backend") {
   deps = [
     ":drm_auth_protocol",
     ":libweston",
+    ":soft_vsync",
     ":trace",
     "//foundation/graphic/standard/frameworks/vsync:libvsync_module",
     "//third_party/libdrm:libdrm",
@@ -494,6 +496,36 @@ ohos_shared_library("trace") {
 
 ## Build trace.so }}}
 
+## Build soft_vsync.so {{{
+config("soft_vsync_config") {
+  visibility = [ ":*" ]
+
+  cflags = [
+    "-Wall",
+    "-Werror",
+    "-g3",
+  ]
+}
+
+config("soft_vsync_public_config") {
+  include_dirs = [ "libweston" ]
+}
+
+ohos_shared_library("soft_vsync") {
+  sources = [ "libweston/soft_vsync.cpp" ]
+  configs = [ ":soft_vsync_config" ]
+  public_configs = [ ":soft_vsync_public_config" ]
+  deps = [
+    "//base/hiviewdfx/hilog/interfaces/native/innerkits:libhilog",
+    "//foundation/graphic/standard/frameworks/vsync:libvsync_module",
+  ]
+
+  subsystem_name = "graphic"
+  part_name = "graphic_standard"
+}
+
+## Build soft_vsync.so }}}
+
 ### Build hdi-backend.so {{{
 #config("hdi-backend_config") {
 #  visibility = [ ":*" ]
@@ -528,6 +560,7 @@ ohos_shared_library("trace") {
 #
 #  deps = [
 #    ":libweston",
+#    ":soft_vsync",
 #    ":trace",
 #    "//drivers/peripheral/display/hal:hdi_display_device_drm",
 #    "//drivers/peripheral/display/hal:hdi_display_gralloc",
