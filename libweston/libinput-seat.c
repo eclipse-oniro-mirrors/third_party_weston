@@ -212,25 +212,43 @@ process_event(struct libinput_event *event)
 		return;
 }
 
+bool
+is_touch_active(struct libinput_event* event)
+{
+    if (!event) {
+        return false;
+    }
+    enum libinput_event_type type = libinput_event_get_type(event);
+    if (type == LIBINPUT_EVENT_TOUCH_DOWN || type == LIBINPUT_EVENT_TOUCH_MOTION) {
+        struct libinput_device *libinput_dev = libinput_event_get_device(event);
+        if (!libinput_dev) {
+            return false;
+        }
+        struct evdev_device *device = libinput_device_get_user_data(libinput_dev);
+        if (!device || !device->output) {
+            return false;
+        }
+        struct weston_touch *touch = device->touch_device->aggregate;
+        if (!touch || !weston_touch_has_focus_resource(touch)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static void
 process_events(struct udev_input *input)
 {
-	struct libinput_event *event;
-
-	while ((event = libinput_get_event(input->libinput))) {
-		process_event(event);
-		// for multi model input.
-		if (g_libinput_event_listener)
-		{
-			weston_log("process_events: call libinput_event_listener.\n");
-			g_libinput_event_listener(event);
-		}
-		else
-		{
-			weston_log("process_events: libinput_event_listener is not set.\n");
-		}
-		libinput_event_destroy(event);
-	}
+    struct libinput_event *event = NULL;
+    while ((event = libinput_get_event(input->libinput))) {
+        process_event(event);
+        if (g_libinput_event_listener && is_touch_active(event)) {
+            g_libinput_event_listener(event);
+        } else {
+            weston_log("process_events: libinput_event_listener is not set.\n");
+        }
+        libinput_event_destroy(event);
+    }
 }
 
 static int

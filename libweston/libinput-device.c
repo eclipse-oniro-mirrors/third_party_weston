@@ -385,31 +385,41 @@ static const struct weston_touch_device_ops touch_calibration_ops = {
 static struct weston_touch_device *
 create_touch_device(struct evdev_device *device)
 {
-	const struct weston_touch_device_ops *ops = NULL;
-	struct weston_touch_device *touch_device;
-	struct udev_device *udev_device;
+    const struct weston_touch_device_ops *ops = NULL;
+    struct weston_touch_device *touch_device;
+#ifndef LIBINPUT_THIRD_HDF
+    struct udev_device *udev_device;
+#endif
 
-	if (libinput_device_config_calibration_has_matrix(device->device))
-		ops = &touch_calibration_ops;
+    if (libinput_device_config_calibration_has_matrix(device->device))
+        ops = &touch_calibration_ops;
 
-	udev_device = libinput_device_get_udev_device(device->device);
-	if (!udev_device)
-		return NULL;
+#ifndef LIBINPUT_THIRD_HDF
+    udev_device = libinput_device_get_udev_device(device->device);
+    if (!udev_device)
+        return NULL;
+#endif
 
-	touch_device = weston_touch_create_touch_device(device->seat->touch_state,
-					udev_device_get_syspath(udev_device),
-					device, ops);
+    touch_device = weston_touch_create_touch_device(device->seat->touch_state,
+#ifndef LIBINPUT_THIRD_HDF
+                    udev_device_get_syspath(udev_device),
+#else
+                    "hdf",
+#endif
+                    device, ops);
 
-	udev_device_unref(udev_device);
+#ifndef LIBINPUT_THIRD_HDF
+    udev_device_unref(udev_device);
+#endif
 
-	if (!touch_device)
-		return NULL;
+    if (!touch_device)
+        return NULL;
 
-	weston_log("Touchscreen - %s - %s\n",
-		   libinput_device_get_name(device->device),
-		   touch_device->syspath);
+    weston_log("Touchscreen - %s - %s\n",
+           libinput_device_get_name(device->device),
+           touch_device->syspath);
 
-	return touch_device;
+    return touch_device;
 }
 
 static void
