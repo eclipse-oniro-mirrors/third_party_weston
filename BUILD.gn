@@ -1,4 +1,5 @@
 import("//build/ohos.gni")
+import("//foundation/multimodalinput/input/multimodalinput_mini.gni")
 import("//third_party/wayland_standard/wayland_protocol.gni")
 
 group("default") {
@@ -151,8 +152,8 @@ ohos_shared_library("libweston") {
 
   deps = [
     ":trace",
+    "//foundation/multimodalinput/input/patch/diff_libinput_mmi:libinput-third-mmi",
     "//third_party/libdrm:libdrm",
-    "//third_party/libinput:libinput-third",
     "//utils/native/base:utils",
   ]
 
@@ -221,7 +222,7 @@ ohos_static_library("libexec_weston") {
     ":trace",
     ":weston_screenshooter_protocol",
     "//foundation/graphic/standard/frameworks/vsync:libvsync_module",
-    "//third_party/libinput:libinput-third",
+    "//foundation/multimodalinput/input/patch/diff_libinput_mmi:libinput-third-mmi",
     "//third_party/wayland-protocols_standard:input_method_unstable_v1_protocol",
     "//third_party/wayland-protocols_standard:text_input_unstable_v1_protocol",
   ]
@@ -425,13 +426,17 @@ ohos_shared_library("drm-backend") {
     ":libweston",
     ":trace",
     "//foundation/graphic/standard/frameworks/vsync:libvsync_module",
+    "//foundation/multimodalinput/input/patch/diff_libinput_mmi:libinput-third-mmi",
     "//third_party/libdrm:libdrm",
-    "//third_party/libinput:libinput-third",
     "//third_party/wayland-protocols_standard:linux_dmabuf_unstable_v1_protocol",
     "//third_party/wayland-protocols_standard:presentation_time_protocol",
     "//third_party/wayland-protocols_standard:relative_pointer_unstable_v1_protocol",
     "//third_party/wayland_standard:wayland_core_protocol",
   ]
+
+  if (is_mmi_have_hdf) {
+    defines = [ "LIBINPUT_THIRD_HDF" ]
+  }
 
   public_deps = []
 
