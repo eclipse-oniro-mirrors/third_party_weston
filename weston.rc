@@ -11,10 +11,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-service multimodalinputservice /system/bin/sa_main /system/profile/multimodalinputservice.xml
-    user system
-    group system shell uhid
-
 service mmi_uinput_service /system/bin/uinput_inject
     user root
     group system shell uhid
@@ -38,7 +34,6 @@ service hdi_weston /system/bin/weston -c /system/etc/weston.ini -B hdi-backend.s
 on post-fs
     start udevd_service
     exec /system/bin/sleep 1
-    start multimodalinputservice
     start mmi_uinput_service
     exec /system/bin/sleep 2
 
