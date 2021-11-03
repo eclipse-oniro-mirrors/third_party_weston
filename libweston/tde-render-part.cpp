@@ -285,7 +285,12 @@ static int tde_repaint_region(struct weston_view *ev,
         return -1;
     }
     output_state->tde->draw_count++;
-    renderer->tde->gfx_funcs->Blit(&srcSurface, &srcRect, &dstSurface, &dstRect, &opt);
+    if (ev->surface->type == WL_SURFACE_TYPE_VIDEO) {
+        opt.blendType = BLEND_SRC;
+        renderer->tde->gfx_funcs->FillRect(&dstSurface, &dstRect, 0x00000000, &opt);
+    } else {
+        renderer->tde->gfx_funcs->Blit(&srcSurface, &srcRect, &dstSurface, &dstRect, &opt);
+    }
     renderer->tde->gfx_funcs->DeinitGfx();
     return 0;
 }
