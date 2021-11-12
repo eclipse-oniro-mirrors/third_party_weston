@@ -152,6 +152,10 @@ static bool
 handle_pointer_button(struct libinput_device *libinput_device,
 		      struct libinput_event_pointer *pointer_event)
 {
+	enum evdev_device_udev_tags deviceType = libinput_device_get_tags(libinput_device);
+	if (deviceType & EVDEV_UDEV_TAG_JOYSTICK) {
+		return false;
+	}
 	struct evdev_device *device =
 		libinput_device_get_user_data(libinput_device);
 	int button_state =
