@@ -17,9 +17,19 @@
 #define LIBWESTON_LIBINPUT_SEAT_EXPORT_H
 
 #include <libinput.h>
+struct multimodal_input_pointer_data {
+    int32_t x;
+    int32_t y;
+    int32_t sx;
+    int32_t sy;
+};
 
+struct multimodal_libinput_event {
+    struct libinput_event* event;
+    void* userdata;
+};
 // for multi model input
-typedef void (*libinput_event_listener)(struct libinput_event *event);
+typedef void (*libinput_event_listener)(struct multimodal_libinput_event*event);
 void set_libinput_event_listener(libinput_event_listener listener);
 
 #endif // LIBWESTON_LIBINPUT_SEAT_EXPORT_H_

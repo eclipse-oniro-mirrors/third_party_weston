@@ -213,27 +213,122 @@ process_event(struct libinput_event *event)
 }
 
 bool
-is_touch_active(struct libinput_event* event)
+process_multimodalinput_touch_event(struct libinput_event *event, struct evdev_device *device, void **data)
 {
     if (!event) {
+        weston_log("process_multimodalinput_events: libinput_event is nullptr.\n");
         return false;
     }
-    enum libinput_event_type type = libinput_event_get_type(event);
-    if (type == LIBINPUT_EVENT_TOUCH_DOWN || type == LIBINPUT_EVENT_TOUCH_MOTION) {
-        struct libinput_device *libinput_dev = libinput_event_get_device(event);
-        if (!libinput_dev) {
-            return false;
+    if (!device) {
+        weston_log("process_multimodalinput_events: evdev_device is nullptr.\n");
+        return false;
+    }
+    struct weston_touch *touch = device->touch_device->aggregate;
+    if (!touch || !weston_touch_has_focus_resource(touch)) {
+        weston_log("process_multimodalinput_events: weston_touch_has_focus_resource return false.\n");
+        return false;
+    }
+
+    uint32_t width = device->output->current_mode->width;
+    uint32_t height = device->output->current_mode->height;
+    struct libinput_event_touch *touch_event = libinput_event_get_touch_event(event);
+    if (!touch_event) {
+        weston_log("process_multimodalinput_events: libinput_event_get_touch_event return false.\n");
+        return false;
+    }
+    double double_x = libinput_event_touch_get_x_transformed(touch_event, width);
+    double double_y = libinput_event_touch_get_y_transformed(touch_event, height);
+    weston_output_transform_coordinate(device->output, double_x, double_y, &double_x, &double_y);
+
+    wl_fixed_t x = wl_fixed_from_double(double_x);
+    wl_fixed_t y = wl_fixed_from_double(double_y);
+
+    wl_fixed_t sx, sy;
+    weston_view_from_global_fixed(touch->focus, x, y, &sx, &sy);
+    double dx = wl_fixed_to_double(sx);
+    double dy = wl_fixed_to_double(sy);
+
+    *data = malloc(sizeof(struct multimodal_input_pointer_data));
+    if (!(*data)) {
+        weston_log("process_multimodalinput_events: malloc multimodal_input_pointer_data return null.\n");
+        return false;
+    }
+    struct multimodal_input_pointer_data *pdata = (struct multimodal_input_pointer_data *)(*data);
+    pdata->x = double_x;
+    pdata->y = double_y;
+    pdata->sx = dx;
+    pdata->sy = dy;
+    return true;
+}
+
+bool
+process_multimodalinput_pointer_event(struct evdev_device *device, void **data)
+{
+    if (!device) {
+        weston_log("process_multimodalinput_events: evdev_device is nullptr.\n");
+        return false;
+    }
+    struct weston_pointer *pointer = weston_seat_get_pointer(device->seat);
+    if (!pointer) {
+        weston_log("process_multimodalinput_events: weston_seat_get_pointer return null.\n");
+        return false;
+    }
+    *data = malloc(sizeof(struct multimodal_input_pointer_data));
+    if (!(*data)) {
+        weston_log("process_multimodalinput_events: malloc multimodal_input_pointer_data return null.\n");
+        return false;
+    }
+    struct multimodal_input_pointer_data *pdata = (struct multimodal_input_pointer_data *)(*data);
+    pdata->x = wl_fixed_to_int(pointer->x);
+    pdata->y = wl_fixed_to_int(pointer->y);
+    pdata->sx = wl_fixed_to_int(pointer->sx);
+    pdata->sy = wl_fixed_to_int(pointer->sy);
+    return true;
+}
+
+void
+process_multimodalinput_events(struct libinput_event *event)
+{
+    if (!event) {
+        weston_log("process_multimodalinput_events: libinput_event is nullptr.\n");
+        return;
+    }
+    if (!g_libinput_event_listener) {
+        weston_log("process_multimodalinput_events: libinput_event_listener is not set.\n");
+        return;
+    }
+    struct libinput_device *libinput_dev = libinput_event_get_device(event);
+    if (!libinput_dev) {
+        weston_log("process_multimodalinput_events: libinput_event_get_device is nullptr.\n");
+        return;
+    }
+    struct evdev_device *device = libinput_device_get_user_data(libinput_dev);
+    if (!device || !device->output) {
+        weston_log("process_multimodalinput_events: libinput_device_get_user_data evdev_device is nullptr.\n");
+        return;
+    }
+
+    struct multimodal_libinput_event muli_event = {};
+    muli_event.event = event;
+    int type = libinput_event_get_type(event);
+    if (LIBINPUT_EVENT_TOUCH_DOWN == type || LIBINPUT_EVENT_TOUCH_MOTION == type) {
+        if (!process_multimodalinput_touch_event(event, device, (void **)&muli_event.userdata)) {
+            weston_log("process_multimodalinput_events: process_multimodalinput_touch_event "
+                       "return false.\n");
+            return;
         }
-        struct evdev_device *device = libinput_device_get_user_data(libinput_dev);
-        if (!device || !device->output) {
-            return false;
-        }
-        struct weston_touch *touch = device->touch_device->aggregate;
-        if (!touch || !weston_touch_has_focus_resource(touch)) {
-            return false;
+    } else if (LIBINPUT_EVENT_POINTER_MOTION == type || LIBINPUT_EVENT_POINTER_BUTTON == type) {
+        if (!process_multimodalinput_pointer_event(device, (void **)&muli_event.userdata)) {
+            weston_log("process_multimodalinput_events: process_multimodalinput_pointer_event "
+                       "return false.\n");
+            return;
         }
     }
-    return true;
+    g_libinput_event_listener(&muli_event);
+    if (muli_event.userdata) {
+        free(muli_event.userdata);
+        muli_event.userdata = NULL;
+    }
 }
 
 static void
@@ -242,11 +337,7 @@ process_events(struct udev_input *input)
     struct libinput_event *event = NULL;
     while ((event = libinput_get_event(input->libinput))) {
         process_event(event);
-        if (g_libinput_event_listener && is_touch_active(event)) {
-            g_libinput_event_listener(event);
-        } else {
-            weston_log("process_events: libinput_event_listener is not set.\n");
-        }
+        process_multimodalinput_events(event);
         libinput_event_destroy(event);
     }
 }
