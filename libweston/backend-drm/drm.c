@@ -48,8 +48,6 @@
 
 #include <libudev.h>
 
-#include <vsync_module_c.h> // OHOS vsync module
-
 #include <libweston/libweston.h>
 #include <libweston/backend-drm.h>
 #include <libweston/weston-log.h>
@@ -70,6 +68,7 @@
 #include "wayland_drm_auth_server.h" // OHOS drm auth
 
 #include "libweston/trace.h"
+#include "libweston/soft_vsync.h" //OHOS vsync module
 DEFINE_LOG_LABEL("DrmBackend");
 
 static const char default_seat[] = "seat0";
@@ -2463,7 +2462,6 @@ drm_destroy(struct weston_compositor *ec)
 	// OHOS vsync module
 	b->vsync_thread_running = false;
 	pthread_join(b->vsync_thread, NULL);
-	VsyncModuleStop();
 
 	close(b->drm.fd);
 	free(b->drm.filename);
@@ -2868,6 +2866,7 @@ ohos_drm_vsync_thread_main(void *backend)
 			sleep(0);
 		} else {
 			VsyncModuleTrigger();
+			StopSoftVsyncThread();
 		}
 	}
 }
@@ -2957,10 +2956,8 @@ drm_backend_create(struct weston_compositor *compositor,
 	}
 
 	// OHOS vsync module
-	if (VsyncModuleStart() == 0) {
-		b->vsync_thread_running = true;
-		pthread_create(&b->vsync_thread, NULL, ohos_drm_vsync_thread_main, b);
-	}
+	b->vsync_thread_running = true;
+	pthread_create(&b->vsync_thread, NULL, ohos_drm_vsync_thread_main, b);
 
 	// OHOS drm auth: init the wayland drm auth service
 	InitWaylandDrmAuthService(compositor->wl_display, b->drm.fd);

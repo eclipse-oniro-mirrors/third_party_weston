@@ -27,6 +27,8 @@
 
 #include <vsync_module_c.h>
 
+#include "libweston/soft_vsync.h" // OHOS vsync module
+
 // C header adapter
 extern "C" {
 #include "libweston/libweston.h"
@@ -61,7 +63,9 @@ hdi_head_get_device_id(struct weston_head *base)
 static void
 hdi_vblank_callback(uint32_t seq, uint64_t ns, void *data)
 {
+    // OHOS vsync module
     VsyncModuleTrigger();
+    SoftVsync::GetInstance().SoftVsyncStop();
 }
 
 int
@@ -81,7 +85,6 @@ hdi_head_create(struct weston_compositor *compositor, uint32_t device_id)
 
     // now just support display 0 to give vsync signal
     if (device_id == 0) {
-        VsyncModuleStart();
         b->device_funcs->RegDisplayVBlankCallback(device_id, hdi_vblank_callback, NULL);
         b->device_funcs->SetDisplayVsyncEnabled(device_id, true);
     }
@@ -109,7 +112,10 @@ hdi_head_destroy(struct weston_head *base)
 {
     LOG_PASS();
     if (hdi_head_get_device_id(base) == 0) {
-        VsyncModuleStop();
+        struct hdi_backend *b = to_hdi_backend(base->compositor);
+        if (b != NULL) {
+            b->device_funcs->SetDisplayVsyncEnabled(0, false);
+        }
     }
     weston_head_release(base);
     free(to_hdi_head(base));

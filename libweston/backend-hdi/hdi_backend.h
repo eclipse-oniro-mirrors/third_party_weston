@@ -26,7 +26,7 @@
 #ifndef LIBWESTON_BACKEND_HDI_HDI_BACKEND_H
 #define LIBWESTON_BACKEND_HDI_HDI_BACKEND_H
 
-#include <display_device.h>
+#include <display_device_drm.h>
 #include <display_layer.h>
 #include <display_gralloc.h>
 
