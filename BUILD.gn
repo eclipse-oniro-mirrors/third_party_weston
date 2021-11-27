@@ -1,3 +1,16 @@
+# Copyright (c) 2021 Huawei Device Co., Ltd.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import("//build/ohos.gni")
 import("//foundation/graphic/standard/graphic_config.gni")
 import("//foundation/multimodalinput/input/multimodalinput_mini.gni")
@@ -182,6 +195,7 @@ ohos_shared_library("libweston") {
     ":weston_direct_display_protocol",
     ":weston_touch_calibration_protocol",
     "//third_party/libdrm:libdrm",
+    "//third_party/openGLES:libGLES",
     "//third_party/wayland-protocols_standard:input_timestamps_unstable_v1_protocol",
     "//third_party/wayland-protocols_standard:linux_dmabuf_unstable_v1_protocol",
     "//third_party/wayland-protocols_standard:linux_explicit_synchronization_unstable_v1_protocol",
@@ -396,15 +410,14 @@ ohos_executable("simple-dmabuf-egl-hos") {
     "include",
     "//third_party/wayland_standard/egl",
   ]
-  cflags = [
-    "-DENABLE_EGL",
-    "-DEGL_NO_X11",
-    "-Wno-incompatible-pointer-types",
-  ]
+
+  cflags = [ "-Wno-incompatible-pointer-types" ]
+
   sources = [ "clients/simple-dmabuf-egl-hos.c" ]
 
   deps = [
     ":weston_direct_display_protocol",
+    "//foundation/graphic/standard:libgl",
     "//foundation/graphic/standard/frameworks/wmserver:wms_protocol",
     "//third_party/libdrm:libdrm",
     "//third_party/wayland-protocols_standard:linux_dmabuf_unstable_v1_protocol",
@@ -412,7 +425,6 @@ ohos_executable("simple-dmabuf-egl-hos") {
     "//third_party/wayland_standard:libwayland_client",
     "//third_party/wayland_standard:wayland_core_protocol",
   ]
-  deps += libgl
 
   part_name = "graphic_standard"
   subsystem_name = "graphic"
@@ -431,18 +443,16 @@ ohos_executable("simple-egl-hos") {
   sources = [ "clients/simple-egl-hos.c" ]
 
   cflags = [
-    "-DENABLE_EGL",
-    "-DEGL_NO_X11",
     "-Wno-int-conversion",
     "-Wno-incompatible-pointer-types",
   ]
 
   deps = [
+    "//foundation/graphic/standard:libgl",
     "//foundation/graphic/standard/frameworks/wmserver:wms_protocol",
     "//third_party/wayland_standard:libwayland_client",
     "//third_party/wayland_standard:wayland_core_protocol",
   ]
-  deps += libgl
 
   part_name = "graphic_standard"
   subsystem_name = "graphic"
@@ -494,6 +504,7 @@ ohos_shared_library("drm-backend") {
     ":libweston",
     ":soft_vsync",
     ":trace",
+    "//foundation/graphic/standard:libgl",
     "//foundation/graphic/standard/frameworks/vsync:libvsync_module",
     "//third_party/libdrm:libdrm",
     "//third_party/wayland-protocols_standard:linux_dmabuf_unstable_v1_protocol",
@@ -501,7 +512,6 @@ ohos_shared_library("drm-backend") {
     "//third_party/wayland-protocols_standard:relative_pointer_unstable_v1_protocol",
     "//third_party/wayland_standard:wayland_core_protocol",
   ]
-  deps += libgl
 
   if (ace_enable_gpu) {
     sources += [ "libweston/backend-drm/drm-gbm.c" ]
@@ -651,8 +661,6 @@ config("gl-renderer_config") {
     "-Wno-visibility",
     "-Wno-unused-function",
     "-Wno-implicit-fallthrough",
-    "-DENABLE_EGL",
-    "-DEGL_NO_X11",
   ]
 }
 
@@ -670,10 +678,10 @@ ohos_shared_library("gl-renderer") {
 
   deps = [
     ":libweston",
+    "//foundation/graphic/standard:libgl",
     "//third_party/libdrm:libdrm",
     "//third_party/wayland-protocols_standard:linux_dmabuf_unstable_v1_protocol",
   ]
-  deps += libgl
 
   part_name = "graphic_standard"
   subsystem_name = "graphic"
