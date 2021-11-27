@@ -135,12 +135,12 @@ screenshooter_frame_notify(struct wl_listener *listener, void *data)
 		free(l);
 		return;
 	}
-
+/*
 	compositor->renderer->read_pixels(output,
 			     compositor->read_format, pixels,
 			     0, 0, output->current_mode->width,
 			     output->current_mode->height);
-
+*/
 	stride = wl_shm_buffer_get_stride(l->buffer->shm_buffer);
 
 	d = wl_shm_buffer_get_data(l->buffer->shm_buffer);
@@ -317,11 +317,11 @@ weston_recorder_frame_notify(struct wl_listener *listener, void *data)
 			y_orig = output->current_mode->height - r[i].y2;
 		else
 			y_orig = r[i].y1;
-
+/*
 		compositor->renderer->read_pixels(output,
 				compositor->read_format, recorder->rect,
 				r[i].x1, y_orig, width, height);
-
+*/
 		p = outbuf;
 		run = prev = 0; /* quiet gcc */
 		for (j = 0; j < height; j++) {

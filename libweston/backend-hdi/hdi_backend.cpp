@@ -76,6 +76,28 @@ hdi_backend_plug_event(uint32_t device_id, bool connected, void *data)
     LOG_EXIT();
 }
 
+static int
+hdi_gl_renderer_init(struct hdi_backend *b)
+{
+   uint32_t format[3] = {
+       b->gbm_format,
+       0,
+       0,
+   };
+   const struct gl_renderer_display_options options = {
+       .egl_platform = EGL_PLATFORM_GBM_KHR,
+       .egl_surface_type = EGL_PBUFFER_BIT,
+       .drm_formats = format,
+       .drm_formats_count = 2,
+   };
+
+   b->glri = (struct gl_renderer_interface *)weston_load_module("gl-renderer.so", "gl_renderer_interface");
+   if (!b->glri)
+       return -1;
+
+   return b->glri->display_create(b->compositor, &options);
+}
+
 static void
 hdi_backend_destroy(struct weston_compositor *ec)
 {
@@ -242,6 +264,11 @@ hdi_backend_create(struct weston_compositor *compositor,
         } break;
     }
 
+    ret = hdi_gl_renderer_init(b);
+    if (ret < 0) {
+        weston_log("hdi_gl_renderer_init failed, gpu render disable.");
+        //goto err_free;
+    }
     // init hdi device
     ret = DeviceInitialize(&b->device_funcs);
     LOG_CORE("DeviceInitialize return %d", ret);
@@ -293,7 +320,7 @@ hdi_backend_create(struct weston_compositor *compositor,
     LOG_CORE("DeviceFuncs.RegHotPlugCallback return %d", ret);
 
     // init linux_dmabuf
-    if (compositor->renderer->import_dmabuf) {
+    if (compositor->hdi_renderer->import_dmabuf) {
         if (linux_dmabuf_setup(compositor) < 0) {
             weston_log("Error: dmabuf protocol setup failed.\n");
             goto err_gralloc_init;

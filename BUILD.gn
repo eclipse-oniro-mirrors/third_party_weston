@@ -179,7 +179,7 @@ ohos_shared_library("libweston") {
     "libweston/pixman-renderer.c",
     "libweston/plugin-registry.c",
     "libweston/screenshooter.c",
-    "libweston/tde-render-part.cpp",  # tde
+    "libweston/tde-render-part.cpp",
     "libweston/touch-calibration.c",
     "libweston/vertex-clipping.c",
     "libweston/weston-direct-display.c",

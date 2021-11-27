@@ -38,7 +38,8 @@ extern "C" {
 #include "libweston/libweston.h"
 #include "libweston/backend.h"
 #include "linux-dmabuf.h"
-
+#include "shared/weston-egl-ext.h"
+#include "renderer-gl/gl-renderer.h"
 struct weston_hdi_backend_config;
 
 enum hdi_renderer_type {
@@ -54,6 +55,8 @@ struct hdi_backend {
     ::OHOS::HDI::Display::V1_0::IDisplayGralloc *display_gralloc;
     struct udev_input input;
     struct udev *udev;
+    struct gl_renderer_interface *glri;
+    uint32_t gbm_format;
 };
 
 struct hdi_pending_state {
