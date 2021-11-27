@@ -307,6 +307,7 @@ struct drm_backend {
 	bool use_tde; // OHOS fix
 	pthread_t vsync_thread; // OHOS vsync module
 	bool vsync_thread_running; // OHOS vsync module
+	int pipe; // OHOS vsync module
 };
 
 struct drm_mode {

@@ -48,6 +48,7 @@ int tde_render_attach_hook(struct weston_surface *es, struct weston_buffer *buff
 int tde_repaint_region_hook(struct weston_view *ev, struct weston_output *output,
                          pixman_region32_t *buffer_region,
                          pixman_region32_t *repaint_output);
+void tde_repaint_finish_hook(struct weston_output *output);
 
 int tde_unref_image_hook(struct pixman_surface_state *ps);
 

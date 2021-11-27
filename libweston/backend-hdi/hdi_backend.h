@@ -26,9 +26,9 @@
 #ifndef LIBWESTON_BACKEND_HDI_HDI_BACKEND_H
 #define LIBWESTON_BACKEND_HDI_HDI_BACKEND_H
 
-#include <display_device_drm.h>
+#include <display_device.h>
 #include <display_layer.h>
-#include <display_gralloc.h>
+#include <idisplay_gralloc.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -51,7 +51,7 @@ struct hdi_backend {
     enum hdi_renderer_type renderer_type;
     DeviceFuncs *device_funcs;
     LayerFuncs *layer_funcs;
-    GrallocFuncs *gralloc_funcs;
+    ::OHOS::HDI::Display::V1_0::IDisplayGralloc *display_gralloc;
     struct udev_input input;
     struct udev *udev;
 };

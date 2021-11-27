@@ -3,8 +3,13 @@
 
 #include <stdio.h>
 
+#ifdef TRACE_ENABLE
 #define _LOG(func, line, color, fmt, ...) \
     log_printf(LABEL, func, line, "\033[" #color "m" fmt, ##__VA_ARGS__)
+#else
+#define _LOG(func, line, color, fmt, ...) \
+    log_printf(LABEL, func, line, fmt, ##__VA_ARGS__)
+#endif
 
 #define LOG_ENTER() log_enter(LABEL, __func__, __LINE__)
 #define LOG_EXIT() log_exit(LABEL, __func__, __LINE__)

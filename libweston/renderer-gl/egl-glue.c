@@ -662,8 +662,7 @@ gl_renderer_setup_egl_extensions(struct weston_compositor *ec)
 		gr->has_dmabuf_import_modifiers = true;
 	}
 
-	if (weston_check_egl_extension(extensions, "EGL_KHR_fence_sync") &&
-	    weston_check_egl_extension(extensions, "EGL_ANDROID_native_fence_sync")) {
+	if (weston_check_egl_extension(extensions, "EGL_KHR_fence_sync")) {
 		gr->create_sync =
 			(void *) eglGetProcAddress("eglCreateSyncKHR");
 		gr->destroy_sync =

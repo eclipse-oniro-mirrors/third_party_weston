@@ -161,15 +161,19 @@ hdi_output_set_mode(struct weston_output *base)
 
     int width = 0;
     int height = 0;
-    int fresh_rate = 60;
+    int fresh_rate = 0;
     for (int i = 0; i < mode_number; i++) {
-        LOG_INFO("modes(%d) %dx%d", modes[i].id, modes[i].width, modes[i].height);
-        if (modes[i].id == active_mode_id) {
+        LOG_INFO("modes(%d) %dx%d %dHz", modes[i].id, modes[i].width, modes[i].height, modes[i].freshRate);
+        if (width < modes[i].width ||
+            height < modes[i].height ||
+            fresh_rate < modes[i].freshRate) {
+            active_mode_id = modes[i].id;
             width = modes[i].width;
             height = modes[i].height;
             fresh_rate = modes[i].freshRate;
         }
     }
+    b->device_funcs->SetDisplayMode(device_id, active_mode_id);
 
     weston_head_set_monitor_strings(whead, "weston", "hdi", NULL);
     weston_head_set_physical_size(whead, width, height);
@@ -210,9 +214,9 @@ hdi_output_enable(struct weston_output *base)
         .format = PIXEL_FMT_BGRA_8888,
     };
     for (int i = 0; i < HDI_OUTPUT_FRMAEBUFFER_SIZE; i++) {
-        int ret = b->gralloc_funcs->AllocMem(&info, &output->framebuffer[i]);
+        int ret = b->display_gralloc->AllocMem(info, output->framebuffer[i]);
         LOG_CORE("GrallocFuncs.AllocMem return %d", ret);
-        void *ptr = b->gralloc_funcs->Mmap(output->framebuffer[i]);
+        void *ptr = b->display_gralloc->Mmap(*output->framebuffer[i]);
         LOG_CORE("GrallocFuncs.Mmap return %p", output->framebuffer[i]->virAddr);
     }
 
@@ -248,9 +252,9 @@ hdi_output_disable(struct weston_output *base)
     hdi_renderer_output_destroy(base);
 
     for (int i = 0; i < HDI_OUTPUT_FRMAEBUFFER_SIZE; i++) {
-        int ret = b->gralloc_funcs->Unmap(output->framebuffer[i]);
+        int ret = b->display_gralloc->Unmap(*output->framebuffer[i]);
         LOG_CORE("GrallocFuncs.Unmap");
-        b->gralloc_funcs->FreeMem(output->framebuffer[i]);
+        b->display_gralloc->FreeMem(*output->framebuffer[i]);
         LOG_CORE("GrallocFuncs.FreeMem");
     }
 

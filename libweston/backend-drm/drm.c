@@ -523,6 +523,19 @@ drm_waitvblank_pipe(struct drm_output *output)
 		return 0;
 }
 
+// OHOS vsync module
+static unsigned int
+drm_waitvblank_pipe_vsync(int pipe)
+{
+	if (pipe > 1)
+		return (pipe << DRM_VBLANK_HIGH_CRTC_SHIFT) &
+				DRM_VBLANK_HIGH_CRTC_MASK;
+	else if (pipe > 0)
+		return DRM_VBLANK_SECONDARY;
+	else
+		return 0;
+}
+
 static int
 drm_output_start_repaint_loop(struct weston_output *output_base)
 {
@@ -1643,6 +1656,7 @@ drm_output_init_crtc(struct drm_output *output, drmModeRes *resources)
 
 	output->crtc_id = resources->crtcs[i];
 	output->pipe = i;
+	b->pipe = i; // OHOS vsync module
 
 	props = drmModeObjectGetProperties(b->drm.fd, output->crtc_id,
 					   DRM_MODE_OBJECT_CRTC);
@@ -2857,7 +2871,7 @@ ohos_drm_vsync_thread_main(void *backend)
 	while (b->vsync_thread_running) {
 		drmVBlank vbl = {
 			.request = {
-				.type = DRM_VBLANK_RELATIVE,
+				.type = DRM_VBLANK_RELATIVE | drm_waitvblank_pipe_vsync(b->pipe),
 				.sequence = 1,
 			},
 		};
