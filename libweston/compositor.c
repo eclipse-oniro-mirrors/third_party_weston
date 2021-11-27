@@ -76,6 +76,8 @@
 #include "backend.h"
 #include "libweston-internal.h"
 
+#include "weston_bytrace.h" // OHOS bytrace
+
 #include "libweston/trace.h"
 DEFINE_LOG_LABEL("Compositor");
 
@@ -2751,6 +2753,7 @@ weston_output_repaint(struct weston_output *output, void *repaint_data)
 
 // OHOS remove timeline
 //	TL_POINT(ec, "core_repaint_begin", TLP_OUTPUT(output), TLP_END);
+	weston_bytrace_begin("CoreRepaint"); // OHOS bytrace
 
 	/* Rebuild the surface list and update surface transforms up front. */
 	weston_compositor_build_view_list(ec);
@@ -2831,6 +2834,7 @@ weston_output_repaint(struct weston_output *output, void *repaint_data)
 
 // OHOS remove timeline
 //	TL_POINT(ec, "core_repaint_posted", TLP_OUTPUT(output), TLP_END);
+	weston_bytrace_end("CoreRepaint"); // OHOS bytrace
 
     LOG_EXIT();
 	return r;
@@ -2939,6 +2943,7 @@ output_repaint_timer_arm(struct weston_compositor *compositor)
 static int
 output_repaint_timer_handler(void *data)
 {
+	weston_bytrace_begin("Repaint"); // OHOS bytrace
     LOG_ENTERS("core: repaint");
 	struct weston_compositor *compositor = data;
 	struct weston_output *output;
@@ -2980,6 +2985,7 @@ output_repaint_timer_handler(void *data)
 	output_repaint_timer_arm(compositor);
 
     LOG_EXITS("end core: repaint");
+	weston_bytrace_end("Repaint"); // OHOS bytrace
 	return 0;
 }
 
@@ -3288,6 +3294,7 @@ surface_attach(struct wl_client *client,
 	       struct wl_resource *resource,
 	       struct wl_resource *buffer_resource, int32_t sx, int32_t sy)
 {
+    weston_bytrace_begin("BufferIPCRecv"); // OHOS bytrace
     LOG_ENTER();
 	struct weston_surface *surface = wl_resource_get_user_data(resource);
 	struct weston_buffer *buffer = NULL;
@@ -3885,6 +3892,7 @@ surface_commit(struct wl_client *client, struct wl_resource *resource)
 			weston_subsurface_parent_commit(sub, 0);
 	}
     LOG_EXIT();
+    weston_bytrace_end("BufferIPCRecv"); // OHOS bytrace
 }
 
 static void

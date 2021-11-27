@@ -191,6 +191,7 @@ ohos_shared_library("libweston") {
 
   deps = [
     ":trace",
+    ":weston_bytrace",
     ":weston_content_protection_protocol",
     ":weston_direct_display_protocol",
     ":weston_touch_calibration_protocol",
@@ -649,6 +650,35 @@ ohos_shared_library("hdi-backend") {
 }
 
 ## Build hdi-backend.so }}}
+
+## Build weston_bytrace.so {{{
+config("weston_bytrace_config") {
+  visibility = [ ":*" ]
+
+  cflags = [
+    "-Wall",
+    "-Werror",
+    "-g3",
+  ]
+}
+
+config("weston_bytrace_public_config") {
+  include_dirs = [ "." ]
+}
+
+ohos_static_library("weston_bytrace") {
+  sources = [ "libweston/weston_bytrace.cpp" ]
+
+  configs = [ ":weston_bytrace_config" ]
+
+  public_configs = [ ":weston_bytrace_public_config" ]
+
+  deps = [
+    "//developtools/bytrace_standard/interfaces/innerkits/native:bytrace_core",
+  ]
+}
+
+## Build weston_bytrace.so }}}
 
 ### Build gl-renderer.so {{{
 config("gl-renderer_config") {
