@@ -242,7 +242,7 @@ struct weston_output {
 	/** Matches the lifetime from the user perspective */
 	struct wl_signal user_destroy_signal;
 
-	//void *renderer_state;
+	void *renderer_state;
 	void *hdi_renderer_state;
 	void *gpu_renderer_state;
 
@@ -1073,6 +1073,7 @@ struct weston_compositor {
 	struct weston_plane primary_plane;
 	uint32_t capabilities; /* combination of enum weston_capability */
 
+	struct weston_renderer *renderer;
 	struct weston_renderer *hdi_renderer;
 	struct weston_renderer *gpu_renderer;
 
@@ -1250,7 +1251,7 @@ struct weston_view {
 	pixman_region32_t clip;          /* See weston_view_damage_below() */
 	float alpha;                     /* part of geometry, see below */
 
-	//void *renderer_state;
+	void *renderer_state;
 	void *hdi_renderer_state;
 	void *gpu_renderer_state;
 
@@ -1415,7 +1416,7 @@ struct weston_surface {
 	 */
 	bool touched;
 
-	//void *renderer_state;
+	void *renderer_state;
 	void *hdi_renderer_state;
 	void *gpu_renderer_state;
 

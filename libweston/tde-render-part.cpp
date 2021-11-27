@@ -243,7 +243,7 @@ static int tde_repaint_region(struct weston_view *ev,
                               pixman_region32_t *buffer_region,
                               pixman_region32_t *repaint_output)
 {
-    struct pixman_renderer *renderer = (struct pixman_renderer *)output->compositor->hdi_renderer;
+    struct pixman_renderer *renderer = (struct pixman_renderer *)output->compositor->renderer;
     struct pixman_surface_state *surface = get_surface_state(ev->surface);
     dump_to_file(surface);
     struct pixman_output_state *output_state = get_output_state(output);
@@ -394,7 +394,7 @@ static int tde_repaint_region(struct weston_view *ev,
 
 void tde_repaint_finish_hook(struct weston_output *output)
 {
-    struct pixman_renderer *renderer = (struct pixman_renderer *)output->compositor->hdi_renderer;
+    struct pixman_renderer *renderer = (struct pixman_renderer *)output->compositor->renderer;
     struct pixman_output_state *output_state = get_output_state(output);
     for (auto &call : output_state->tde->calls) {
         if (renderer->tde->gfx_funcs->InitGfx() != 0) {
@@ -637,7 +637,7 @@ int tde_render_attach_hook(struct weston_surface *es, struct weston_buffer *buff
 int tde_repaint_region_hook(struct weston_view *ev, struct weston_output *output,
         pixman_region32_t *buffer_region, pixman_region32_t *repaint_output)
 {
-    struct pixman_renderer *renderer = (struct pixman_renderer *)output->compositor->hdi_renderer;
+    struct pixman_renderer *renderer = (struct pixman_renderer *)output->compositor->renderer;
     if (!renderer->tde->use_tde) {
         return -1;
     }

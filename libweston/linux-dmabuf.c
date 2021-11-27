@@ -550,11 +550,11 @@ bind_linux_dmabuf(struct wl_client *client,
 	 * Use EGL_EXT_image_dma_buf_import_modifiers to query and advertise
 	 * format/modifier codes.
 	 */
-	compositor->hdi_renderer->query_dmabuf_formats(compositor, &formats,
+	compositor->renderer->query_dmabuf_formats(compositor, &formats,
 						   &num_formats);
 
 	for (i = 0; i < num_formats; i++) {
-		compositor->hdi_renderer->query_dmabuf_modifiers(compositor,
+		compositor->renderer->query_dmabuf_modifiers(compositor,
 							     formats[i],
 							     &modifiers,
 							     &num_modifiers);
