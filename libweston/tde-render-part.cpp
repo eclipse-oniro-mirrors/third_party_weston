@@ -55,6 +55,9 @@ extern "C" {
 #undef virtual
 }
 
+#include "libweston/trace.h"
+DEFINE_LOG_LABEL("TDERenderer");
+
 struct tde_image_t {
     int32_t width;
     int32_t height;
@@ -249,9 +252,98 @@ static int tde_repaint_region(struct weston_view *ev,
         target_image = output_state->shadow_image;
     }
 
+    GfxOpt opt = {
+        .enPixelAlpha = true,
+        .blendType = output_state->tde->draw_count ? BLEND_SRCOVER : BLEND_SRC,
+        .enableScale = true,
+    };
+
+    // region calc
     pixman_region32_t global_repaint_region;
-    weston_view_to_global_region(ev, &global_repaint_region, buffer_region);
-    pixman_region32_intersect(&global_repaint_region, &global_repaint_region, repaint_output);
+    pixman_region32_t buffer_repaint_region;
+    {
+        pixman_region32_t surface_region;
+        pixman_region32_init_rect(&surface_region, 0, 0, ev->surface->width, ev->surface->height);
+
+        if (output->zoom.active) {
+            weston_matrix_transform_region(repaint_output, &output->matrix, repaint_output);
+        } else {
+            pixman_region32_translate(repaint_output, -output->x, -output->y);
+            weston_transformed_region(output->width, output->height,
+                    static_cast<enum wl_output_transform>(output->transform),
+                    output->current_scale,
+                    repaint_output, repaint_output);
+        }
+
+        LOG_REGION(1, &surface_region);
+        LOG_REGION(2, repaint_output);
+
+        struct weston_matrix matrix = output->inverse_matrix;
+        if (ev->transform.enabled) {
+            weston_matrix_multiply(&matrix, &ev->transform.inverse);
+            LOG_INFO("transform enabled");
+        } else {
+            weston_matrix_translate(&matrix,
+                    -ev->geometry.x, -ev->geometry.y, 0);
+            LOG_INFO("transform disabled");
+        }
+        weston_matrix_multiply(&matrix, &ev->surface->surface_to_buffer_matrix);
+
+        if (matrix.d[0] == matrix.d[5] && matrix.d[0] == 0) {
+            if (matrix.d[4] > 0 && matrix.d[1] > 0) {
+                LOG_INFO("90 mirror");
+                opt.rotateType = ROTATE_90;
+                opt.mirrorType = MIRROR_LR;
+            } else if (matrix.d[4] < 0 && matrix.d[1] > 0) {
+                LOG_INFO("90");
+                opt.rotateType = ROTATE_90;
+            } else if (matrix.d[4] < 0 && matrix.d[1] < 0) {
+                LOG_INFO("270 mirror");
+                opt.rotateType = ROTATE_270;
+                opt.mirrorType = MIRROR_LR;
+            } else if (matrix.d[4] > 0 && matrix.d[1] < 0) {
+                LOG_INFO("270");
+                opt.rotateType = ROTATE_270;
+            }
+        } else {
+            if (matrix.d[0] > 0 && matrix.d[5] > 0) {
+                LOG_INFO("0");
+                opt.rotateType = ROTATE_NONE;
+            } else if (matrix.d[0] < 0 && matrix.d[5] < 0) {
+                LOG_INFO("180");
+                opt.rotateType = ROTATE_180;
+            } else if (matrix.d[0] < 0 && matrix.d[5] > 0) {
+                LOG_INFO("0 mirror");
+                opt.rotateType = ROTATE_NONE;
+                opt.mirrorType = MIRROR_LR;
+            } else if (matrix.d[0] > 0 && matrix.d[5] < 0) {
+                LOG_INFO("180 mirror");
+                opt.rotateType = ROTATE_180;
+                opt.mirrorType = MIRROR_LR;
+            }
+        }
+        LOG_INFO("%f %f %f %f", matrix.d[0], matrix.d[1], matrix.d[2], matrix.d[3]);
+        LOG_INFO("%f %f %f %f", matrix.d[4], matrix.d[5], matrix.d[6], matrix.d[7]);
+        LOG_INFO("%f %f %f %f", matrix.d[8], matrix.d[9], matrix.d[10], matrix.d[11]);
+        LOG_INFO("%f %f %f %f", matrix.d[12], matrix.d[13], matrix.d[14], matrix.d[15]);
+        LOG_INFO("%d %d", ev->surface->width, ev->surface->height);
+
+        weston_view_to_global_region(ev, &global_repaint_region, &surface_region);
+        pixman_region32_intersect(&global_repaint_region, &global_repaint_region, repaint_output);
+        LOG_REGION(3, &global_repaint_region);
+
+        pixman_region32_t surface_repaint_region;
+        pixman_region32_init(&surface_repaint_region);
+        weston_view_from_global_region(ev, &surface_repaint_region, &global_repaint_region);
+        LOG_REGION(4, &surface_repaint_region);
+
+        pixman_region32_init(&buffer_repaint_region);
+        weston_surface_to_buffer_region(ev->surface, &surface_repaint_region, &buffer_repaint_region);
+        LOG_REGION(5, &buffer_repaint_region);
+        pixman_region32_fini(&surface_repaint_region);
+        pixman_region32_fini(&surface_region);
+        pixman_region32_fini(repaint_output);
+    }
     pixman_box32_t *global_box = pixman_region32_extents(&global_repaint_region);
     IRect dstRect = {
         .x = global_box->x1, .y = global_box->y1,
@@ -259,8 +351,6 @@ static int tde_repaint_region(struct weston_view *ev,
         .h = global_box->y2 - global_box->y1
     };
 
-    pixman_region32_t buffer_repaint_region;
-    weston_view_from_global_region(ev, &buffer_repaint_region, &global_repaint_region);
     pixman_box32_t *buffer_box = pixman_region32_extents(&buffer_repaint_region);
     IRect srcRect = {
         .x = buffer_box->x1, .y = buffer_box->y1,
@@ -270,15 +360,11 @@ static int tde_repaint_region(struct weston_view *ev,
     pixman_region32_fini(&global_repaint_region);
     pixman_region32_fini(&buffer_repaint_region);
 
+    // tde
     ISurface dstSurface = {};
     dst_surface_init(&dstSurface, target_image, output);
     ISurface srcSurface = {};
     src_surface_init(&srcSurface, surface->tde->image);
-    GfxOpt opt = {
-        .enPixelAlpha = true,
-        .blendType = output_state->tde->draw_count ? BLEND_SRCOVER : BLEND_SRC,
-        .enableScale = true,
-    };
 
     if (ev->surface->type == WL_SURFACE_TYPE_VIDEO) {
         opt.blendType = BLEND_SRC;

@@ -26,6 +26,14 @@
                 (region)->extents.x1, (region)->extents.y1, \
                 (region)->extents.x2, (region)->extents.y2)
 
+#define LOG_MATRIX(matrix) \
+    LOG_INFO(#matrix ": {"); \
+    LOG_INFO(#matrix "    %f, %f, %f, %f", (matrix)->d[0], (matrix)->d[4], (matrix)->d[8], (matrix)->d[12]); \
+    LOG_INFO(#matrix "    %f, %f, %f, %f", (matrix)->d[1], (matrix)->d[5], (matrix)->d[9], (matrix)->d[13]); \
+    LOG_INFO(#matrix "    %f, %f, %f, %f", (matrix)->d[2], (matrix)->d[6], (matrix)->d[10], (matrix)->d[14]); \
+    LOG_INFO(#matrix "    %f, %f, %f, %f", (matrix)->d[3], (matrix)->d[7], (matrix)->d[11], (matrix)->d[15]); \
+    LOG_INFO(#matrix "}")
+
 #ifdef __cplusplus
 extern "C" {
 #endif

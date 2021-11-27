@@ -69,6 +69,7 @@ struct hdi_surface_state {
     uint32_t zorder;
     BlendType blend_type;
     CompositionType comp_type;
+    TransformType rotate_type;
     BufferHandle *bh;
 };
 
@@ -338,11 +339,6 @@ hdi_renderer_repaint_output_calc_region(pixman_region32_t *global_repaint_region
     pixman_region32_t surface_region;
     pixman_region32_init_rect(&surface_region, 0, 0, view->surface->width, view->surface->height);
 
-    pixman_region32_t buffer_region;
-    pixman_region32_init(&buffer_region);
-    weston_surface_to_buffer_region(view->surface, &surface_region, &buffer_region);
-    pixman_region32_fini(&surface_region);
-
     pixman_region32_t repaint_output;
     pixman_region32_init(&repaint_output);
     pixman_region32_copy(&repaint_output, output_damage);
@@ -356,7 +352,7 @@ hdi_renderer_repaint_output_calc_region(pixman_region32_t *global_repaint_region
                 &repaint_output, &repaint_output);
     }
 
-    LOG_REGION(1, &buffer_region);
+    LOG_REGION(1, &surface_region);
     LOG_REGION(2, &repaint_output);
 
     struct weston_matrix matrix = output->inverse_matrix;
@@ -369,21 +365,54 @@ hdi_renderer_repaint_output_calc_region(pixman_region32_t *global_repaint_region
         LOG_INFO("transform disabled");
     }
     weston_matrix_multiply(&matrix, &view->surface->surface_to_buffer_matrix);
+    struct hdi_surface_state *hss = (struct hdi_surface_state *)view->surface->renderer_state;
+    if (matrix.d[0] == matrix.d[5] && matrix.d[0] == 0) {
+        if (matrix.d[4] > 0 && matrix.d[1] > 0) {
+            LOG_INFO("Transform: 90 mirror");
+            hss->rotate_type = ROTATE_90;
+        } else if (matrix.d[4] < 0 && matrix.d[1] > 0) {
+            LOG_INFO("Transform: 90");
+            hss->rotate_type = ROTATE_90;
+        } else if (matrix.d[4] < 0 && matrix.d[1] < 0) {
+            LOG_INFO("Transform: 270 mirror");
+            hss->rotate_type = ROTATE_270;
+        } else if (matrix.d[4] > 0 && matrix.d[1] < 0) {
+            LOG_INFO("Transform: 270");
+            hss->rotate_type = ROTATE_270;
+        }
+    } else {
+        if (matrix.d[0] > 0 && matrix.d[5] > 0) {
+            LOG_INFO("Transform: 0");
+            hss->rotate_type = ROTATE_NONE;
+        } else if (matrix.d[0] < 0 && matrix.d[5] < 0) {
+            LOG_INFO("Transform: 180");
+            hss->rotate_type = ROTATE_180;
+        } else if (matrix.d[0] < 0 && matrix.d[5] > 0) {
+            LOG_INFO("Transform: 0 mirror");
+            hss->rotate_type = ROTATE_NONE;
+        } else if (matrix.d[0] > 0 && matrix.d[5] < 0) {
+            LOG_INFO("Transform: 180 mirror");
+            hss->rotate_type = ROTATE_180;
+        }
+    }
 
-    LOG_INFO("%f %f %f %f", matrix.d[0], matrix.d[1], matrix.d[2], matrix.d[3]);
-    LOG_INFO("%f %f %f %f", matrix.d[4], matrix.d[5], matrix.d[6], matrix.d[7]);
-    LOG_INFO("%f %f %f %f", matrix.d[8], matrix.d[9], matrix.d[10], matrix.d[11]);
-    LOG_INFO("%f %f %f %f", matrix.d[12], matrix.d[13], matrix.d[14], matrix.d[15]);
+    LOG_MATRIX(&matrix);
     LOG_INFO("%d %d", view->surface->width, view->surface->height);
 
-    weston_view_to_global_region(view, global_repaint_region, &buffer_region);
+    weston_view_to_global_region(view, global_repaint_region, &surface_region);
     pixman_region32_intersect(global_repaint_region, global_repaint_region, &repaint_output);
     LOG_REGION(3, global_repaint_region);
 
-    weston_view_from_global_region(view, buffer_repaint_region, global_repaint_region);
-    LOG_REGION(4, buffer_repaint_region);
+    pixman_region32_t surface_repaint_region;
+    pixman_region32_init(&surface_repaint_region);
+    weston_view_from_global_region(view, &surface_repaint_region, global_repaint_region);
+    LOG_REGION(4, &surface_repaint_region);
 
-    pixman_region32_fini(&buffer_region);
+    pixman_region32_init(buffer_repaint_region);
+    weston_surface_to_buffer_region(view->surface, &surface_repaint_region, buffer_repaint_region);
+    LOG_REGION(5, buffer_repaint_region);
+    pixman_region32_fini(&surface_repaint_region);
+    pixman_region32_fini(&surface_region);
     pixman_region32_fini(&repaint_output);
 }
 
@@ -536,7 +565,8 @@ hdi_renderer_repaint_output(struct weston_output *output,
         LOG_CORE("LayerFuncs.SetLayerBlendType return %d", ret);
         ret = b->layer_funcs->SetLayerCompositionType(device_id, hss->layer_id, hss->comp_type);
         LOG_CORE("LayerFuncs.SetLayerCompositionType return %d", ret);
-        b->layer_funcs->SetTransformMode(device_id, hss->layer_id, ROTATE_NONE);
+        ret = b->layer_funcs->SetTransformMode(device_id, hss->layer_id, hss->rotate_type);
+        LOG_CORE("LayerFuncs.SetTransformMode return %d", ret);
     }
     LOG_EXIT();
 }

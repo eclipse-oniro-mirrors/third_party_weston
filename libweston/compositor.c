@@ -2806,6 +2806,7 @@ weston_output_repaint(struct weston_output *output, void *repaint_data)
 	if (output->dirty)
 		weston_output_update_matrix(output);
 
+    LOG_REGION("output->repaint damage", &output_damage);
 	r = output->repaint(output, &output_damage, repaint_data);
 
 	pixman_region32_fini(&output_damage);
