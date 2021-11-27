@@ -23,54 +23,18 @@
  * SOFTWARE.
  */
 
-#ifndef LIBWESTON_BACKEND_HDI_HDI_BACKEND_H
-#define LIBWESTON_BACKEND_HDI_HDI_BACKEND_H
-
-#include <display_device.h>
-#include <display_layer.h>
-#include <idisplay_gralloc.h>
+#ifndef LIBWESTON_BYTRACE_H
+#define LIBWESTON_BYTRACE_H
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#include "libinput-seat.h"
-#include "libweston/libweston.h"
-#include "libweston/backend.h"
-#include "linux-dmabuf.h"
-
-struct weston_hdi_backend_config;
-
-enum hdi_renderer_type {
-    HDI_RENDERER_HDI,
-};
-
-struct hdi_backend {
-    struct weston_backend base;
-    struct weston_compositor *compositor;
-    enum hdi_renderer_type renderer_type;
-    DeviceFuncs *device_funcs;
-    LayerFuncs *layer_funcs;
-    ::OHOS::HDI::Display::V1_0::IDisplayGralloc *display_gralloc;
-    struct udev_input input;
-    struct udev *udev;
-};
-
-struct hdi_pending_state {
-    struct hdi_backend *backend;
-    int device_id;
-    BufferHandle *framebuffer;
-};
-
-struct hdi_backend *
-to_hdi_backend(struct weston_compositor *base);
-
-struct hdi_backend *
-hdi_backend_create(struct weston_compositor *compositor,
-            struct weston_hdi_backend_config *config);
+void weston_bytrace_begin(const char *label);
+void weston_bytrace_end(const char *label);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // LIBWESTON_BACKEND_HDI_HDI_BACKEND_H
+#endif // LIBWESTON_BYTRACE_H

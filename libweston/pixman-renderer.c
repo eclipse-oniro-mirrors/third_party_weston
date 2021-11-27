@@ -518,6 +518,7 @@ repaint_surfaces(struct weston_output *output, pixman_region32_t *damage)
 	wl_list_for_each_reverse(view, &compositor->view_list, link)
 		if (view->plane == &compositor->primary_plane)
 			draw_view(view, output, damage);
+	tde_repaint_finish_hook(output);
 }
 
 static void

@@ -33,7 +33,7 @@
 #include <libweston/libweston.h>
 #include "backend.h"
 #include "libweston-internal.h"
-#include "text-cursor-position-server-protocol.h"
+// #include "text-cursor-position-server-protocol.h" // useless
 #include "shared/helpers.h"
 
 static void

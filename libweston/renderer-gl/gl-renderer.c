@@ -40,6 +40,7 @@
 #include <linux/input.h>
 #include <drm_fourcc.h>
 #include <unistd.h>
+#include <xf86drm.h>
 
 #include "linux-sync-file.h"
 #include "timeline.h"
@@ -52,6 +53,7 @@
 #include "linux-explicit-synchronization.h"
 #include "pixel-formats.h"
 
+#include <fcntl.h>
 #include "shared/fd-util.h"
 #include "shared/helpers.h"
 #include "shared/platform.h"
@@ -65,6 +67,7 @@
 	GR_GL_VERSION(0, 0)
 
 #define BUFFER_DAMAGE_COUNT 2
+#define GBM_DEVICE_PATH "/dev/dri/card0"
 
 enum gl_border_status {
 	BORDER_STATUS_CLEAN = 0,
@@ -3424,6 +3427,8 @@ gl_renderer_destroy(struct weston_compositor *ec)
 	if (gr->fan_binding)
 		weston_binding_destroy(gr->fan_binding);
 
+	gbm_device_destroy(gr->device);
+    close(gr->gbm_fd);
 	free(gr);
 }
 
@@ -3484,9 +3489,21 @@ gl_renderer_display_create(struct weston_compositor *ec,
 		return -1;
 
 	gr->platform = options->egl_platform;
+	gr->gbm_fd = open(GBM_DEVICE_PATH, O_RDWR);
+    if (gr->gbm_fd < 0) {
+        weston_log("failed to open gbm render node.\n");
+        goto fail;
+    }
+	drmDropMaster(gr->gbm_fd);
+
+    gr->device = gbm_create_device(gr->gbm_fd);
+    if (gr->device == NULL) {
+        weston_log("failed to create gbm device.\n");
+        goto fail_fd;
+    }
 
 	if (gl_renderer_setup_egl_client_extensions(gr) < 0)
-		goto fail;
+		goto fail_device;
 
 	gr->base.read_pixels = gl_renderer_read_pixels;
 	gr->base.repaint_output = gl_renderer_repaint_output;
@@ -3499,7 +3516,7 @@ gl_renderer_display_create(struct weston_compositor *ec,
 	gr->base.surface_copy_content = gl_renderer_surface_copy_content;
 
 	if (gl_renderer_setup_egl_display(gr, options->egl_native_display) < 0)
-		goto fail;
+		goto fail_device;
 
 	log_egl_info(gr->egl_display);
 
@@ -3572,6 +3589,10 @@ fail_with_error:
 	gl_renderer_print_egl_error_state();
 fail_terminate:
 	eglTerminate(gr->egl_display);
+fail_device:
+	gbm_device_destroy(gr->device);
+fail_fd:
+	close(gr->gbm_fd);
 fail:
 	free(gr);
 	ec->renderer = NULL;

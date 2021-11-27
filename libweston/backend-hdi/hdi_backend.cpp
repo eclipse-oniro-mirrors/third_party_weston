@@ -90,7 +90,7 @@ hdi_backend_destroy(struct weston_compositor *ec)
         hdi_head_destroy(base);
     }
 
-    GrallocUninitialize(b->gralloc_funcs);
+    delete b->display_gralloc;
     LayerUninitialize(b->layer_funcs);
     DeviceUninitialize(b->device_funcs);
 
@@ -257,10 +257,9 @@ hdi_backend_create(struct weston_compositor *compositor,
         goto err_device_init;
     }
 
-    ret = GrallocInitialize(&b->gralloc_funcs);
-    LOG_CORE("GrallocInitialize return %d", ret);
-    if (ret != DISPLAY_SUCCESS || b->gralloc_funcs == NULL) {
-        weston_log("GrallocInitialize failed");
+    b->display_gralloc = ::OHOS::HDI::Display::V1_0::IDisplayGralloc::Get();
+    if (ret != DISPLAY_SUCCESS || b->display_gralloc == NULL) {
+        weston_log("IDisplayGralloc::Get failed");
         goto err_layer_init;
     }
 
@@ -314,7 +313,7 @@ hdi_backend_create(struct weston_compositor *compositor,
     return b;
 
 err_gralloc_init:
-    GrallocUninitialize(b->gralloc_funcs);
+    delete b->display_gralloc;
 
 err_layer_init:
     LayerUninitialize(b->layer_funcs);

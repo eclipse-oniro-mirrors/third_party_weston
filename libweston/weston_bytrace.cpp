@@ -23,54 +23,19 @@
  * SOFTWARE.
  */
 
-#ifndef LIBWESTON_BACKEND_HDI_HDI_BACKEND_H
-#define LIBWESTON_BACKEND_HDI_HDI_BACKEND_H
+#include "weston_bytrace.h"
 
-#include <display_device.h>
-#include <display_layer.h>
-#include <idisplay_gralloc.h>
+#include <bytrace.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-#include "libinput-seat.h"
-#include "libweston/libweston.h"
-#include "libweston/backend.h"
-#include "linux-dmabuf.h"
-
-struct weston_hdi_backend_config;
-
-enum hdi_renderer_type {
-    HDI_RENDERER_HDI,
-};
-
-struct hdi_backend {
-    struct weston_backend base;
-    struct weston_compositor *compositor;
-    enum hdi_renderer_type renderer_type;
-    DeviceFuncs *device_funcs;
-    LayerFuncs *layer_funcs;
-    ::OHOS::HDI::Display::V1_0::IDisplayGralloc *display_gralloc;
-    struct udev_input input;
-    struct udev *udev;
-};
-
-struct hdi_pending_state {
-    struct hdi_backend *backend;
-    int device_id;
-    BufferHandle *framebuffer;
-};
-
-struct hdi_backend *
-to_hdi_backend(struct weston_compositor *base);
-
-struct hdi_backend *
-hdi_backend_create(struct weston_compositor *compositor,
-            struct weston_hdi_backend_config *config);
-
-#ifdef __cplusplus
+void weston_bytrace_begin(const char *label)
+{
+    std::string str = label;
+    UpdateTraceLabel();
+    StartTrace(BYTRACE_TAG_GRAPHIC_AGP, str);
 }
-#endif
 
-#endif // LIBWESTON_BACKEND_HDI_HDI_BACKEND_H
+void weston_bytrace_end(const char *label)
+{
+    (void)label;
+    FinishTrace(BYTRACE_TAG_GRAPHIC_AGP);
+}

@@ -1,18 +1,61 @@
+# Copyright (c) 2021 Huawei Device Co., Ltd.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import("//build/ohos.gni")
+import("//foundation/graphic/standard/graphic_config.gni")
 import("//foundation/multimodalinput/input/multimodalinput_mini.gni")
 import("//third_party/wayland_standard/wayland_protocol.gni")
 
 group("default") {
   public_deps = [
     ":drm-backend",
-
-    #":hdi-backend",
+    ":hdi-backend",
     ":ivi-shell",
-    ":libweston-desktop",
     ":weston",
     ":weston.ini",
     ":weston.rc",
   ]
+
+  if (ace_enable_gpu) {
+    public_deps += [
+      ":gl-renderer",
+
+      # ":simple-dmabuf-egl-hos",
+      # ":simple-egl-hos",
+      "//third_party/wayland_standard:libwayland_client.0",
+      "//third_party/wayland_standard:libwayland_server.0",
+    ]
+  }
+}
+
+weston_defines = []
+if (ace_enable_gpu) {
+  weston_defines += [ "BUILD_DRM_GBM=1" ]
+}
+if (is_mmi_have_hdf) {
+  weston_defines += [ "LIBINPUT_THIRD_HDF" ]
+}
+
+set_defaults("ohos_shared_library") {
+  defines = weston_defines
+}
+
+set_defaults("ohos_static_library") {
+  defines = weston_defines
+}
+
+set_defaults("ohos_executable") {
+  defines = weston_defines
 }
 
 ## Generate Wayland Protocols {{{
@@ -58,9 +101,10 @@ config("libshared_config") {
 }
 
 config("libshared_public_config") {
-  include_dirs = [ "shared" ]
-
-  cflags = []
+  include_dirs = [
+    # "shared",
+    ".",
+  ]
 }
 
 ohos_static_library("libshared") {
@@ -89,7 +133,6 @@ config("libweston_config") {
 
   include_dirs = [
     "//third_party/weston/include",
-    "libweston",
     "//third_party/wayland_standard/src",
     "//third_party/wayland-ivi-extension_standard/include",
     "//third_party/weston",
@@ -109,11 +152,9 @@ config("libweston_config") {
 config("libweston_public_config") {
   include_dirs = [
     "include",
-    "libweston/backend-drm",
-    "//third_party/bounds_checking_function/include",
+    "libweston",
+    "libweston/backend-drm",  # tde
   ]
-
-  cflags = []
 }
 
 ohos_shared_library("libweston") {
@@ -128,6 +169,8 @@ ohos_shared_library("libweston") {
     "libweston/launcher-direct.c",
     "libweston/launcher-util.c",
     "libweston/launcher-weston-launch.c",
+    "libweston/libinput-device.c",
+    "libweston/libinput-seat.c",
     "libweston/linux-dmabuf.c",
     "libweston/linux-explicit-synchronization.c",
     "libweston/linux-sync-file.c",
@@ -136,7 +179,7 @@ ohos_shared_library("libweston") {
     "libweston/pixman-renderer.c",
     "libweston/plugin-registry.c",
     "libweston/screenshooter.c",
-    "libweston/tde-render-part.cpp",
+    "libweston/tde-render-part.cpp",  # tde
     "libweston/touch-calibration.c",
     "libweston/vertex-clipping.c",
     "libweston/weston-direct-display.c",
@@ -145,28 +188,16 @@ ohos_shared_library("libweston") {
 
   configs = [ ":libweston_config" ]
 
-  public_configs = [
-    ":libweston_public_config",
-    ":drm-backend_public_config",
-  ]
+  public_configs = [ ":libweston_public_config" ]
 
   deps = [
     ":trace",
-    "//foundation/multimodalinput/input/patch/diff_libinput_mmi:libinput-third-mmi",
-    "//third_party/libdrm:libdrm",
-    "//utils/native/base:utils",
-  ]
-
-  public_deps = [
-    ":libshared",
-    ":text_cursor_position_protocol",
+    ":weston_bytrace",
     ":weston_content_protection_protocol",
     ":weston_direct_display_protocol",
     ":weston_touch_calibration_protocol",
-    "//base/hiviewdfx/hilog/interfaces/native/innerkits:libhilog",
-    "//drivers/peripheral/display/hal:hdi_display_gralloc",
-    "//third_party/libxkbcommon:libxkbcommon",
-    "//third_party/pixman:libpixman",
+    "//third_party/libdrm:libdrm",
+    "//third_party/openGLES:libGLES",
     "//third_party/wayland-protocols_standard:input_timestamps_unstable_v1_protocol",
     "//third_party/wayland-protocols_standard:linux_dmabuf_unstable_v1_protocol",
     "//third_party/wayland-protocols_standard:linux_explicit_synchronization_unstable_v1_protocol",
@@ -175,6 +206,16 @@ ohos_shared_library("libweston") {
     "//third_party/wayland-protocols_standard:relative_pointer_unstable_v1_protocol",
     "//third_party/wayland-protocols_standard:viewporter_protocol",
     "//third_party/wayland-protocols_standard:xdg_output_unstable_v1_protocol",
+    "//utils/native/base:utils",
+  ]
+
+  public_deps = [
+    ":libshared",
+    "//base/hiviewdfx/hilog/interfaces/native/innerkits:libhilog",
+    "//drivers/peripheral/display/hdi_service/gralloc/client:hdi_gralloc_client",  # tde
+    "//foundation/multimodalinput/input/patch/diff_libinput_mmi:libinput-third-mmi",
+    "//third_party/libxkbcommon:libxkbcommon",
+    "//third_party/pixman:libpixman",
   ]
 
   part_name = "graphic_standard"
@@ -186,11 +227,6 @@ ohos_shared_library("libweston") {
 ## Build libexec_weston.a {{{
 config("libexec_weston_config") {
   visibility = [ ":*" ]
-
-  include_dirs = [
-    "libweston",
-    ".",
-  ]
 
   cflags = [
     "-Wall",
@@ -280,7 +316,7 @@ ohos_executable("weston") {
 config("libweston-desktop_config") {
   visibility = [ ":*" ]
 
-  include_dirs = [ "." ]
+  include_dirs = []
 
   cflags = [
     "-Wall",
@@ -328,7 +364,7 @@ ohos_shared_library("libweston-desktop") {
 config("ivi-shell_config") {
   visibility = [ ":*" ]
 
-  include_dirs = [ "." ]
+  include_dirs = []
 
   cflags = [
     "-Wall",
@@ -369,15 +405,70 @@ ohos_shared_library("ivi-shell") {
 
 ## Build ivi-shell.so }}}
 
+# Build simple-dmabuf-egl-hos {{{
+ohos_executable("simple-dmabuf-egl-hos") {
+  include_dirs = [
+    ".",
+    "include",
+    "//third_party/wayland_standard/egl",
+  ]
+
+  cflags = [ "-Wno-incompatible-pointer-types" ]
+
+  sources = [ "clients/simple-dmabuf-egl-hos.c" ]
+
+  deps = [
+    ":weston_direct_display_protocol",
+    "//foundation/graphic/standard:libgl",
+    "//foundation/graphic/standard/frameworks/wmserver:wms_protocol",
+    "//third_party/libdrm:libdrm",
+    "//third_party/wayland-protocols_standard:linux_dmabuf_unstable_v1_protocol",
+    "//third_party/wayland-protocols_standard:linux_explicit_synchronization_unstable_v1_protocol",
+    "//third_party/wayland_standard:libwayland_client",
+    "//third_party/wayland_standard:wayland_core_protocol",
+  ]
+
+  part_name = "graphic_standard"
+  subsystem_name = "graphic"
+}
+
+# Build simple-dmabuf-egl-hos }}}
+
+# Build simple-egl-hos {{{
+ohos_executable("simple-egl-hos") {
+  include_dirs = [
+    ".",
+    "include",
+    "//third_party/wayland_standard/egl",
+  ]
+
+  sources = [ "clients/simple-egl-hos.c" ]
+
+  cflags = [
+    "-Wno-int-conversion",
+    "-Wno-incompatible-pointer-types",
+  ]
+
+  deps = [
+    "//foundation/graphic/standard:libgl",
+    "//foundation/graphic/standard/frameworks/wmserver:wms_protocol",
+    "//third_party/wayland_standard:libwayland_client",
+    "//third_party/wayland_standard:wayland_core_protocol",
+  ]
+
+  part_name = "graphic_standard"
+  subsystem_name = "graphic"
+}
+
+# Build simple-egl-hos }}}
+
 ## Build drm-backend.so {{{
 config("drm-backend_config") {
   visibility = [ ":*" ]
 
   include_dirs = [
     "include",
-    "libweston",
     "libweston/backend-drm/auth",
-    ".",
   ]
 
   cflags = [
@@ -390,12 +481,6 @@ config("drm-backend_config") {
     "-Wno-unused-function",
     "-Wno-sometimes-uninitialized",
   ]
-}
-
-config("drm-backend_public_config") {
-  include_dirs = []
-
-  cflags = []
 }
 
 ohos_shared_library("drm-backend") {
@@ -412,23 +497,17 @@ ohos_shared_library("drm-backend") {
     "libweston/backend-drm/modes.c",
     "libweston/backend-drm/state-helpers.c",
     "libweston/backend-drm/state-propose.c",
-    "libweston/libinput-device.c",
-    "libweston/libinput-seat.c",
-
-    # "libweston/backend-drm/drm-gbm.c",
   ]
 
   configs = [ ":drm-backend_config" ]
-
-  public_configs = [ ":drm-backend_public_config" ]
 
   deps = [
     ":drm_auth_protocol",
     ":libweston",
     ":soft_vsync",
     ":trace",
+    "//foundation/graphic/standard:libgl",
     "//foundation/graphic/standard/frameworks/vsync:libvsync_module",
-    "//foundation/multimodalinput/input/patch/diff_libinput_mmi:libinput-third-mmi",
     "//third_party/libdrm:libdrm",
     "//third_party/wayland-protocols_standard:linux_dmabuf_unstable_v1_protocol",
     "//third_party/wayland-protocols_standard:presentation_time_protocol",
@@ -436,11 +515,9 @@ ohos_shared_library("drm-backend") {
     "//third_party/wayland_standard:wayland_core_protocol",
   ]
 
-  if (is_mmi_have_hdf) {
-    defines = [ "LIBINPUT_THIRD_HDF" ]
+  if (ace_enable_gpu) {
+    sources += [ "libweston/backend-drm/drm-gbm.c" ]
   }
-
-  public_deps = []
 
   part_name = "graphic_standard"
   subsystem_name = "graphic"
@@ -531,114 +608,113 @@ ohos_shared_library("soft_vsync") {
 
 ## Build soft_vsync.so }}}
 
-### Build hdi-backend.so {{{
-#config("hdi-backend_config") {
-#  visibility = [ ":*" ]
-#
-#  include_dirs = [
-#    "libweston",
-#    ".",
-#  ]
-#
-#  cflags = [
-#    "-Wall",
-#    "-Werror",
-#  ]
-#}
-#
-#ohos_shared_library("hdi-backend") {
-#  output_prefix_override = true
-#  output_name = "hdi-backend"
-#  output_extension = "so"
-#
-#  sources = [
-#    "libweston/backend-hdi/hdi_backend.cpp",
-#    "libweston/backend-hdi/hdi_head.cpp",
-#    "libweston/backend-hdi/hdi_output.cpp",
-#    "libweston/backend-hdi/hdi_renderer.cpp",
-#    "libweston/backend-hdi/main.cpp",
-#    "libweston/libinput-device.c",
-#    "libweston/libinput-seat.c",
-#  ]
-#
-#  configs = [ ":hdi-backend_config" ]
-#
-#  deps = [
-#    ":libweston",
-#    ":soft_vsync",
-#    ":trace",
-#    "//drivers/peripheral/display/hal:hdi_display_device_drm",
-#    "//drivers/peripheral/display/hal:hdi_display_gralloc",
-#    "//foundation/graphic/standard/frameworks/vsync:libvsync_module",
-#    "//third_party/libdrm:libdrm",
-#    "//third_party/libinput:libinput-third",
-#    "//third_party/wayland-protocols_standard:linux_dmabuf_unstable_v1_protocol",
-#    "//third_party/wayland_standard:wayland_core_protocol",
-#    "//utils/native/base:utils",
-#  ]
-#
-#  part_name = "graphic_standard"
-#  subsystem_name = "graphic"
-#}
-#
-### Build hdi-backend.so }}}
+## Build hdi-backend.so {{{
+config("hdi-backend_config") {
+  visibility = [ ":*" ]
 
-# gl-renderer.so waiting for libEGL & libGLESv2
+  cflags = [
+    "-Wall",
+    "-Werror",
+  ]
+}
+
+ohos_shared_library("hdi-backend") {
+  output_prefix_override = true
+  output_name = "hdi-backend"
+  output_extension = "so"
+
+  sources = [
+    "libweston/backend-hdi/hdi_backend.cpp",
+    "libweston/backend-hdi/hdi_head.cpp",
+    "libweston/backend-hdi/hdi_output.cpp",
+    "libweston/backend-hdi/hdi_renderer.cpp",
+    "libweston/backend-hdi/main.cpp",
+  ]
+
+  configs = [ ":hdi-backend_config" ]
+
+  deps = [
+    ":libweston",
+    ":soft_vsync",
+    ":trace",
+    "//drivers/peripheral/display/hal:hdi_display_device",
+    "//drivers/peripheral/display/hdi_service/gralloc/client:hdi_gralloc_client",
+    "//foundation/graphic/standard/frameworks/vsync:libvsync_module",
+    "//third_party/libdrm:libdrm",
+    "//third_party/wayland-protocols_standard:linux_dmabuf_unstable_v1_protocol",
+    "//third_party/wayland_standard:wayland_core_protocol",
+    "//utils/native/base:utils",
+  ]
+
+  part_name = "graphic_standard"
+  subsystem_name = "graphic"
+}
+
+## Build hdi-backend.so }}}
+
+## Build weston_bytrace.so {{{
+config("weston_bytrace_config") {
+  visibility = [ ":*" ]
+
+  cflags = [
+    "-Wall",
+    "-Werror",
+    "-g3",
+  ]
+}
+
+config("weston_bytrace_public_config") {
+  include_dirs = [ "." ]
+}
+
+ohos_static_library("weston_bytrace") {
+  sources = [ "libweston/weston_bytrace.cpp" ]
+
+  configs = [ ":weston_bytrace_config" ]
+
+  public_configs = [ ":weston_bytrace_public_config" ]
+
+  deps = [
+    "//developtools/bytrace_standard/interfaces/innerkits/native:bytrace_core",
+  ]
+}
+
+## Build weston_bytrace.so }}}
+
 ### Build gl-renderer.so {{{
-#config("gl-renderer_config") {
-#  visibility = [ ":*" ]
-#
-#  include_dirs = [
-#    "//third_party/weston",
-#    "//third_party/wayland_standard/egl",
-#    "//third_party/weston/libweston",
-#    "//third_party/wayland-ivi-extension_standard/include",
-#  ]
-#
-#  cflags = [
-#    "-Wno-return-type",
-#    "-Wno-visibility",
-#    "-Wno-unused-function",
-#  ]
-#}
-#
-#config("gl-renderer_public_config") {
-#  include_dirs = [
-#  ]
-#
-#  cflags = [
-#  ]
-#}
-#
-#ohos_shared_library("gl-renderer") {
-#  sources = [
-#    "libweston/renderer-gl/egl-glue.c",
-#    "libweston/renderer-gl/gl-renderer.c",
-#    "libweston/vertex-clipping.c",
-#  ]
-#
-#  configs = [
-#    ":gl-renderer_config",
-#  ]
-#
-#  public_configs = [
-#    ":gl-renderer_public_config",
-#  ]
-#
-#  deps = [
-#    ":libweston",
-#    "//third_party/wayland-protocols_standard:linux_dmabuf_unstable_v1_protocol",
-#  ]
-#
-#  asdk_deps = [
-#    "shared_library:libEGL",
-#    "shared_library:libGLESv2",
-#  ]
-#
-#  public_deps = [
-#  ]
-#
-#  subsystem_name = "graphic"
-#  part_name = "graphic_standard"
-#}
+config("gl-renderer_config") {
+  visibility = [ ":*" ]
+
+  include_dirs = [ "//third_party/wayland_standard/egl" ]
+
+  cflags = [
+    "-Wno-return-type",
+    "-Wno-visibility",
+    "-Wno-unused-function",
+    "-Wno-implicit-fallthrough",
+  ]
+}
+
+ohos_shared_library("gl-renderer") {
+  output_prefix_override = true
+  output_name = "gl-renderer"
+  output_extension = "so"
+
+  sources = [
+    "libweston/renderer-gl/egl-glue.c",
+    "libweston/renderer-gl/gl-renderer.c",
+  ]
+
+  configs = [ ":gl-renderer_config" ]
+
+  deps = [
+    ":libweston",
+    "//foundation/graphic/standard:libgl",
+    "//third_party/libdrm:libdrm",
+    "//third_party/wayland-protocols_standard:linux_dmabuf_unstable_v1_protocol",
+  ]
+
+  part_name = "graphic_standard"
+  subsystem_name = "graphic"
+}
 ### Build gl-renderer.so }}}

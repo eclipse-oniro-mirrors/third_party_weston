@@ -40,14 +40,14 @@
 #include <sys/time.h>
 
 #include <drm_fourcc.h>
-#include <xf86drm.h>
+// #include <xf86drm.h>
 
 #include <wayland-client.h>
 #include "shared/helpers.h"
 #include "shared/platform.h"
+#include "shared/simple_gbm.h"
 #include <libweston/zalloc.h>
-#include "xdg-shell-client-protocol.h"
-#include "fullscreen-shell-unstable-v1-client-protocol.h"
+#include <wms-client-protocol.h>
 #include "linux-dmabuf-unstable-v1-client-protocol.h"
 #include "weston-direct-display-client-protocol.h"
 #include "linux-explicit-synchronization-unstable-v1-client-protocol.h"
@@ -58,6 +58,8 @@
 #include <GLES2/gl2ext.h>
 
 #include "shared/weston-egl-ext.h"
+
+#define LOG(fmt, ...)  printf("dmabuf-egl: " fmt "\n", ##__VA_ARGS__)
 
 #ifndef DRM_FORMAT_MOD_INVALID
 #define DRM_FORMAT_MOD_INVALID ((1ULL << 56) - 1)
@@ -76,8 +78,7 @@ struct display {
 	struct wl_display *display;
 	struct wl_registry *registry;
 	struct wl_compositor *compositor;
-	struct xdg_wm_base *wm_base;
-	struct zwp_fullscreen_shell_v1 *fshell;
+	struct wms *wms;
 	struct zwp_linux_dmabuf_v1 *dmabuf;
 	struct weston_direct_display_v1 *direct_display;
 	struct zwp_linux_explicit_synchronization_v1 *explicit_sync;
@@ -105,6 +106,7 @@ struct display {
 		int drm_fd;
 		struct gbm_device *device;
 	} gbm;
+	struct window *window;
 };
 
 struct buffer {
@@ -139,8 +141,6 @@ struct window {
 	struct display *display;
 	int width, height;
 	struct wl_surface *surface;
-	struct xdg_surface *xdg_surface;
-	struct xdg_toplevel *xdg_toplevel;
 	struct zwp_linux_surface_synchronization_v1 *surface_sync;
 	struct buffer buffers[NUM_BUFFERS];
 	struct wl_callback *callback;
@@ -343,6 +343,7 @@ create_dmabuf_buffer(struct display *display, struct buffer *buffer,
 	buffer->format = BUFFER_FORMAT;
 	buffer->release_fence_fd = -1;
 
+    fprintf(stderr,"pss %s %d, %s, BUFFER_FORMAT 0x%08x\n",__func__,__LINE__,__FILE__,BUFFER_FORMAT);
 #ifdef HAVE_GBM_MODIFIERS
 	if (display->modifiers_count > 0) {
 		buffer->bo = gbm_bo_create_with_modifiers(display->gbm.device,
@@ -457,41 +458,6 @@ error:
 	buffer_free(buffer);
 	return -1;
 }
-
-static void
-xdg_surface_handle_configure(void *data, struct xdg_surface *surface,
-			     uint32_t serial)
-{
-	struct window *window = data;
-
-	xdg_surface_ack_configure(surface, serial);
-
-	if (window->initialized && window->wait_for_configure)
-		redraw(window, NULL, 0);
-	window->wait_for_configure = false;
-}
-
-static const struct xdg_surface_listener xdg_surface_listener = {
-	xdg_surface_handle_configure,
-};
-
-static void
-xdg_toplevel_handle_configure(void *data, struct xdg_toplevel *toplevel,
-			      int32_t width, int32_t height,
-			      struct wl_array *states)
-{
-}
-
-static void
-xdg_toplevel_handle_close(void *data, struct xdg_toplevel *xdg_toplevel)
-{
-	running = 0;
-}
-
-static const struct xdg_toplevel_listener xdg_toplevel_listener = {
-	xdg_toplevel_handle_configure,
-	xdg_toplevel_handle_close,
-};
 
 static const char *vert_shader_text =
 	"uniform float offset;\n"
@@ -636,10 +602,6 @@ destroy_window(struct window *window)
 			buffer_free(&window->buffers[i]);
 	}
 
-	if (window->xdg_toplevel)
-		xdg_toplevel_destroy(window->xdg_toplevel);
-	if (window->xdg_surface)
-		xdg_surface_destroy(window->xdg_surface);
 	if (window->surface_sync)
 		zwp_linux_surface_synchronization_v1_destroy(window->surface_sync);
 	wl_surface_destroy(window->surface);
@@ -659,37 +621,19 @@ create_window(struct display *display, int width, int height, int opts)
 
 	window->callback = NULL;
 	window->display = display;
+	display->window = window;
 	window->width = width;
 	window->height = height;
 	window->surface = wl_compositor_create_surface(display->compositor);
 
-	if (display->wm_base) {
-		window->xdg_surface =
-			xdg_wm_base_get_xdg_surface(display->wm_base,
-						    window->surface);
+	if (display->wms) {
+		wms_create_window(display->wms, window->surface, 0, 0);
+    	wl_display_flush(display->display);
+		wl_display_roundtrip(display->display);
+		wl_display_roundtrip(display->display);
 
-		assert(window->xdg_surface);
-
-		xdg_surface_add_listener(window->xdg_surface,
-					 &xdg_surface_listener, window);
-
-		window->xdg_toplevel =
-			xdg_surface_get_toplevel(window->xdg_surface);
-
-		assert(window->xdg_toplevel);
-
-		xdg_toplevel_add_listener(window->xdg_toplevel,
-					  &xdg_toplevel_listener, window);
-
-		xdg_toplevel_set_title(window->xdg_toplevel, "simple-dmabuf-egl");
-
-		window->wait_for_configure = true;
+		window->wait_for_configure = false;
 		wl_surface_commit(window->surface);
-	} else if (display->fshell) {
-		zwp_fullscreen_shell_v1_present_surface(display->fshell,
-							window->surface,
-							ZWP_FULLSCREEN_SHELL_V1_PRESENT_METHOD_DEFAULT,
-							NULL);
 	} else {
 		assert(0);
 	}
@@ -710,7 +654,7 @@ create_window(struct display *display, int width, int height, int opts)
 
 	for (i = 0; i < NUM_BUFFERS; ++i) {
 		ret = create_dmabuf_buffer(display, &window->buffers[i],
-		                           width, height, opts);
+		                           window->width, window->height, opts);
 
 		if (ret < 0)
 			goto error;
@@ -948,7 +892,7 @@ redraw(void *data, struct wl_callback *callback, uint32_t time)
 {
 	struct window *window = data;
 	struct buffer *buffer;
-
+    fprintf(stderr,"pss %s %d, %s\n",__func__,__LINE__,__FILE__);
 	buffer = window_next_buffer(window);
 	if (!buffer) {
 		fprintf(stderr,
@@ -960,11 +904,14 @@ redraw(void *data, struct wl_callback *callback, uint32_t time)
 	if (buffer->release_fence_fd >= 0)
 		wait_for_buffer_release_fence(buffer);
 
+    fprintf(stderr,"pss %s %d, %s\n",__func__,__LINE__,__FILE__);
 	if (window->render_mandelbrot)
 		render_mandelbrot(window, buffer);
 	else
 		render(window, buffer);
+    fprintf(stderr,"pss %s %d, %s\n",__func__,__LINE__,__FILE__);
 
+    fprintf(stderr,"pss %s %d, %s\n",__func__,__LINE__,__FILE__);
 	if (window->display->use_explicit_sync) {
 		int fence_fd = create_egl_fence_fd(window);
 		zwp_linux_surface_synchronization_v1_set_acquire_fence(
@@ -979,16 +926,20 @@ redraw(void *data, struct wl_callback *callback, uint32_t time)
 		glFinish();
 	}
 
+    fprintf(stderr,"pss %s %d, %s\n",__func__,__LINE__,__FILE__);
 	wl_surface_attach(window->surface, buffer->buffer, 0, 0);
 	wl_surface_damage(window->surface, 0, 0, window->width, window->height);
 
+    fprintf(stderr,"pss %s %d, %s\n",__func__,__LINE__,__FILE__);
 	if (callback)
 		wl_callback_destroy(callback);
 
+    fprintf(stderr,"pss %s %d, %s\n",__func__,__LINE__,__FILE__);
 	window->callback = wl_surface_frame(window->surface);
 	wl_callback_add_listener(window->callback, &frame_listener, window);
 	wl_surface_commit(window->surface);
 	buffer->busy = 1;
+    fprintf(stderr,"pss %s %d, %s\n",__func__,__LINE__,__FILE__);
 }
 
 static const struct wl_callback_listener frame_listener = {
@@ -1025,15 +976,109 @@ static const struct zwp_linux_dmabuf_v1_listener dmabuf_listener = {
 	dmabuf_modifiers
 };
 
-static void
-xdg_wm_base_ping(void *data, struct xdg_wm_base *wm_base, uint32_t serial)
+static void WindowShotError(void *data, struct wms *wms, uint32_t error, uint32_t window_id)
 {
-	xdg_wm_base_pong(wm_base, serial);
+    LOG("WindowShotError error: %d", error);
+    LOG("WindowShotError window_id: %d", window_id);
 }
 
-static const struct xdg_wm_base_listener xdg_wm_base_listener = {
-	xdg_wm_base_ping,
-};
+static void WindowShotDone(void *data,
+                struct wms *wms,
+                uint32_t window_id, int32_t fd,
+                int32_t width, int32_t height, int32_t stride,
+                uint32_t format, uint32_t seconds, uint32_t nanoseconds)
+{
+    LOG("WindowShotDone window_id: %d", window_id);
+    LOG("WindowShotDone fd: %d", fd);
+    LOG("WindowShotDone width: %d", width);
+    LOG("WindowShotDone height: %d", height);
+    LOG("WindowShotDone stride: %d", stride);
+    LOG("WindowShotDone format: %d", format);
+    LOG("WindowShotDone seconds: %d", seconds);
+    LOG("WindowShotDone nanoseconds: %d", nanoseconds);
+    
+    LOG("windowshot OK!!!");
+
+    close(fd);
+}
+
+static void ScreenShotError(void *data, struct wms *wms, uint32_t error, uint32_t screen_id)
+{
+    LOG("ScreenShotError error: %d", error);
+    LOG("ScreenShotError screen_id: %d", screen_id);
+}
+
+static void ScreenShotDone(void *data,
+                struct wms *wms,
+                uint32_t screen_id, int32_t fd,
+                int32_t width, int32_t height, int32_t stride,
+                uint32_t format, uint32_t seconds, uint32_t nanoseconds)
+{
+    LOG("ScreenShotDone screen_id: %d", screen_id);
+    LOG("ScreenShotDone fd: %d", fd);
+    LOG("ScreenShotDone width: %d", width);
+    LOG("ScreenShotDone height: %d", height);
+    LOG("ScreenShotDone stride: %d", stride);
+    LOG("ScreenShotDone format: %d", format);
+    LOG("ScreenShotDone seconds: %d", seconds);
+    LOG("ScreenShotDone nanoseconds: %d", nanoseconds);
+
+    LOG("screenshot OK!!!");
+    close(fd);
+}
+
+static void ReplyStatus(void *data, struct wms *wms, uint32_t status)
+{
+    LOG("ReplyStatus status: %d", status);
+}
+
+static void DisplayMode(void *data, struct wms *wms, uint32_t flag)
+{
+    LOG("DisplayMode flag: %d", flag);
+}
+
+void ScreenUpdate(void *data,
+                struct wms *wms,
+                uint32_t screen_id,
+                const char *name,
+                uint32_t update_state,
+                int width, int height)
+{
+    LOG("screenUpdate screen_id: %d", screen_id);
+    LOG("screenUpdate name: %s", name);
+    LOG("screenUpdate update_state: %d", update_state);
+    LOG("screenUpdate width: %d", width);
+    LOG("screenUpdate height: %d", height);
+
+    if (update_state == WMS_SCREEN_STATUS_ADD) {
+        LOG("screen add. ");
+    }
+    else {
+        LOG("screen destroy.");
+    }
+}
+
+void WindowUpdate(void *data, struct wms *wms, uint32_t update_state, uint32_t window_id,
+                    int32_t x, int32_t y, int32_t width, int32_t height)
+{
+	struct display *d = data;
+    LOG("WindowUpdate window_id: %d", window_id);
+    LOG("WindowUpdate update_state: %d", update_state);
+    LOG("WindowUpdate x:%d, y:%d", x, y);
+    LOG("WindowUpdate width:%d, height:%d", width, height);
+    
+    if (update_state == WMS_WINDOW_STATUS_CREATED) {
+        LOG("window %d create. ", window_id);
+		d->window->width = width;
+		d->window->height = height;
+    }
+    else if (update_state == WMS_WINDOW_STATUS_FAILED) {
+        LOG("window create failed. ");
+    }
+    else {
+        LOG("window %d destroy. ", window_id);
+    }
+}
 
 static void
 registry_handle_global(void *data, struct wl_registry *registry,
@@ -1045,13 +1090,23 @@ registry_handle_global(void *data, struct wl_registry *registry,
 		d->compositor =
 			wl_registry_bind(registry,
 					 id, &wl_compositor_interface, 1);
-	} else if (strcmp(interface, "xdg_wm_base") == 0) {
-		d->wm_base = wl_registry_bind(registry,
-					      id, &xdg_wm_base_interface, 1);
-		xdg_wm_base_add_listener(d->wm_base, &xdg_wm_base_listener, d);
-	} else if (strcmp(interface, "zwp_fullscreen_shell_v1") == 0) {
-		d->fshell = wl_registry_bind(registry,
-					     id, &zwp_fullscreen_shell_v1_interface, 1);
+	} else if (strcmp(interface, "wms") == 0) {
+		d->wms = (struct wms *)wl_registry_bind(registry, id, &wms_interface, 1);
+
+        static struct wms_listener wmsListener = {
+            WindowUpdate,
+            ScreenUpdate,
+            DisplayMode,
+            ReplyStatus,
+            ScreenShotDone,
+            ScreenShotError,
+            WindowShotDone,
+            WindowShotError
+        };
+        wms_add_listener(d->wms, &wmsListener, d);
+		wl_display_flush(d->display);
+        wl_display_roundtrip(d->display);
+		
 	} else if (strcmp(interface, "zwp_linux_dmabuf_v1") == 0) {
 		if (version < 3)
 			return;
@@ -1099,12 +1154,6 @@ destroy_display(struct display *display)
 	if (display->dmabuf)
 		zwp_linux_dmabuf_v1_destroy(display->dmabuf);
 
-	if (display->wm_base)
-		xdg_wm_base_destroy(display->wm_base);
-
-	if (display->fshell)
-		zwp_fullscreen_shell_v1_release(display->fshell);
-
 	if (display->compositor)
 		wl_compositor_destroy(display->compositor);
 
@@ -1143,6 +1192,7 @@ display_set_up_egl(struct display *display)
 	display->egl.display =
 		weston_platform_get_egl_display(EGL_PLATFORM_GBM_KHR,
 						display->gbm.device, NULL);
+
 	if (display->egl.display == EGL_NO_DISPLAY) {
 		fprintf(stderr, "Failed to create EGLDisplay\n");
 		goto error;
@@ -1209,6 +1259,7 @@ display_set_up_egl(struct display *display)
 		goto error;
 	}
 
+#if 0
 	if (weston_check_egl_extension(egl_extensions,
 				       "EGL_EXT_image_dma_buf_import_modifiers")) {
 		display->egl.has_dma_buf_import_modifiers = true;
@@ -1216,6 +1267,7 @@ display_set_up_egl(struct display *display)
 			(void *) eglGetProcAddress("eglQueryDmaBufModifiersEXT");
 		assert(display->egl.query_dma_buf_modifiers);
 	}
+#endif
 
 	display->egl.create_image =
 		(void *) eglGetProcAddress("eglCreateImageKHR");
@@ -1234,11 +1286,11 @@ display_set_up_egl(struct display *display)
 				       "EGL_ANDROID_native_fence_sync")) {
 		display->egl.create_sync =
 			(void *) eglGetProcAddress("eglCreateSyncKHR");
-		assert(display->egl.create_sync);
+		assert(display->egl.create_sync);		
 
 		display->egl.destroy_sync =
 			(void *) eglGetProcAddress("eglDestroySyncKHR");
-		assert(display->egl.destroy_sync);
+		assert(display->egl.destroy_sync);		
 
 		display->egl.client_wait_sync =
 			(void *) eglGetProcAddress("eglClientWaitSyncKHR");
@@ -1483,7 +1535,7 @@ main(int argc, char **argv)
 	struct display *display;
 	struct window *window;
 	int opts = 0;
-	char const *drm_render_node = "/dev/dri/renderD128";
+	char const *drm_render_node = "/dev/dri/card0";
 	int c, option_index, ret = 0;
 	int window_size = 256;
 
@@ -1550,8 +1602,11 @@ main(int argc, char **argv)
 	if (!window->wait_for_configure)
 		redraw(window, NULL, 0);
 
-	while (running && ret != -1)
+    fprintf(stderr,"pss %s %d, %s\n",__func__,__LINE__,__FILE__);
+	while (running && ret != -1) {
+        fprintf(stderr,"pss %s %d, %s\n",__func__,__LINE__,__FILE__);
 		ret = wl_display_dispatch(display->display);
+    }
 
 	fprintf(stderr, "simple-dmabuf-egl exiting\n");
 	destroy_window(window);

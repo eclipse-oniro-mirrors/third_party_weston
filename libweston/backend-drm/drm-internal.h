@@ -48,7 +48,7 @@
 #include <drm_fourcc.h>
 
 #ifdef BUILD_DRM_GBM
-#include <gbm.h>
+#include "shared/simple_gbm.h"
 #endif
 #include <libudev.h>
 
@@ -307,6 +307,7 @@ struct drm_backend {
 	bool use_tde; // OHOS fix
 	pthread_t vsync_thread; // OHOS vsync module
 	bool vsync_thread_running; // OHOS vsync module
+	int pipe; // OHOS vsync module
 };
 
 struct drm_mode {
