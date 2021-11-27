@@ -28,6 +28,7 @@
 
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
+#include "shared/simple_gbm.h"
 #include "shared/weston-egl-ext.h"  /* for PFN* stuff */
 
 struct gl_shader {
@@ -119,6 +120,8 @@ struct gl_renderer {
 
 	bool has_wait_sync;
 	PFNEGLWAITSYNCKHRPROC wait_sync;
+	int gbm_fd;
+	struct gbm_device *device;
 };
 
 static inline struct gl_renderer *

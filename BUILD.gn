@@ -29,8 +29,9 @@ group("default") {
   if (ace_enable_gpu) {
     public_deps += [
       ":gl-renderer",
-      ":simple-dmabuf-egl-hos",
-      ":simple-egl-hos",
+
+      # ":simple-dmabuf-egl-hos",
+      # ":simple-egl-hos",
       "//third_party/wayland_standard:libwayland_client.0",
       "//third_party/wayland_standard:libwayland_server.0",
     ]

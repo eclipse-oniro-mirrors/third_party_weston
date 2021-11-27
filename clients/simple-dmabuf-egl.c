@@ -41,7 +41,6 @@
 
 #include <drm_fourcc.h>
 #include <xf86drm.h>
-#include <gbm.h>
 
 #include <wayland-client.h>
 #include "shared/helpers.h"

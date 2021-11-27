@@ -40,11 +40,12 @@
 #include <sys/time.h>
 
 #include <drm_fourcc.h>
-#include <gbm.h>
+// #include <xf86drm.h>
 
 #include <wayland-client.h>
 #include "shared/helpers.h"
 #include "shared/platform.h"
+#include "shared/simple_gbm.h"
 #include <libweston/zalloc.h>
 #include <wms-client-protocol.h>
 #include "linux-dmabuf-unstable-v1-client-protocol.h"

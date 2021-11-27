@@ -48,7 +48,7 @@
 #include <drm_fourcc.h>
 
 #ifdef BUILD_DRM_GBM
-#include <gbm.h>
+#include "shared/simple_gbm.h"
 #endif
 #include <libudev.h>
 
