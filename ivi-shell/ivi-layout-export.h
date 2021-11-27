@@ -66,11 +66,6 @@ extern "C" {
 #define IVI_FAILED (-1)
 #define IVI_INVALID_ID UINT_MAX
 
-// #define USE_DUMMY_SCREEN
-#ifdef USE_DUMMY_SCREEN
-#define DUMMY_SCREEN_WIDTH (240)
-#define DUMMY_SCREEN_HEIGHT (480)
-#endif /* USE_DUMMY_SCREEN */
 
 struct ivi_layout_layer;
 struct ivi_layout_screen;
@@ -597,9 +592,6 @@ struct ivi_layout_interface {
 	 */
 	int32_t (*screen_remove_layer)(struct weston_output *output,
 				       struct ivi_layout_layer *removelayer);
-#ifdef USE_DUMMY_SCREEN
-	struct weston_output * (*get_dummy_output)(void);
-#endif /* USE_DUMMY_SCREEN */
 };
 
 static inline const struct ivi_layout_interface *
@@ -651,10 +643,9 @@ struct ivi_layout_interface_for_wms {
 	uint32_t (*surface_change_top)(struct ivi_layout_surface *ivisurf);
 	int32_t (*layer_set_visibility)(struct ivi_layout_layer *ivilayer,
 					bool newVisibility);
-#ifdef USE_DUMMY_SCREEN
-	struct weston_output * (*get_dummy_output)(void);
-#endif /* USE_DUMMY_SCREEN */
-
+	int32_t (*layer_set_source_rectangle)(struct ivi_layout_layer *ivilayer,
+					      int32_t x, int32_t y,
+					      int32_t width, int32_t height);
 	int32_t (*screen_clone)(const uint32_t screen_id_from, 
 					const uint32_t screen_id_to);
 	int32_t (*screen_clear)(const uint32_t screen_id);
@@ -667,6 +658,9 @@ struct ivi_layout_interface_for_wms {
 					struct ivi_layout_layer ***ppArray);
 	uint32_t (*get_id_of_layer)(struct ivi_layout_layer *ivilayer);
 	uint32_t (*get_id_of_surface)(struct ivi_layout_surface *ivisurf);
+	struct weston_output* (*create_virtual_screen)(int32_t x, int32_t y,
+					int32_t width, int32_t height);
+	int32_t (*destroy_virtual_screen)(uint32_t screen_id);
 
 };
 
