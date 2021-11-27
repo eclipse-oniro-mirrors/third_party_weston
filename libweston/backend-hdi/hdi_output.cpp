@@ -120,41 +120,40 @@ hdi_output_repaint(struct weston_output *output_base,
     struct hdi_output *output = to_hdi_output(output_base);
     struct weston_head *h = weston_output_get_first_head(output_base);
     hps->device_id = hdi_head_get_device_id(h);
+
+    // prepare framebuffer
+    output->current_framebuffer_id = (output->current_framebuffer_id + 1) % 2;
+    auto &hdi_framebuffer = output->framebuffer[output->current_framebuffer_id];
+    auto &gl_framebuffer = output->gl_render_framebuffer[output->current_framebuffer_id];
+
+    // assign view to renderer
+    bool need_gpu_render = false;
+    bool need_hdi_render = false;
     struct weston_view *view;
-    bool has_renderer_gpu = false;
-    bool has_renderer_hdi = false;
     wl_list_for_each_reverse(view, &output_base->compositor->view_list, link) {
         if (view->renderer_type == WESTON_RENDERER_TYPE_GPU) {
-            has_renderer_gpu = true;
-        }
-
-        if (view->renderer_type == WESTON_RENDERER_TYPE_HDI) {
-            has_renderer_hdi = true;
+            need_gpu_render = true;
+        } else if (view->renderer_type == WESTON_RENDERER_TYPE_HDI) {
+            need_hdi_render = true;
         }
     }
 
-    if (has_renderer_gpu) {
-        weston_log("########has_renderer_gpu repaint_output %{public}s %{public}d, %{public}s\n",__func__,__LINE__,__FILE__);
+    // gpu render
+    if (need_gpu_render) {
         output_base->compositor->gpu_renderer->repaint_output(output_base, damage);
-
-        if (has_renderer_hdi) {
-             weston_log("########set gpu renderer buffer %{public}s %{public}d, %{public}s\n",__func__,__LINE__,__FILE__);
-            // set gpu renderer buffer ...
-            hdi_renderer_output_set_gpu_buffer(output_base, output->gl_render_framebuffer[output->current_framebuffer_id]);
+        if (need_hdi_render) {
+            hdi_renderer_output_set_gpu_buffer(output_base, gl_framebuffer);
         }
     }
 
-    if (has_renderer_hdi) {
-        weston_log("########has_renderer_hdi repaint_output %{public}s %{public}d, %{public}s\n",__func__,__LINE__,__FILE__);
+    // hdi render
+    if (need_hdi_render) {
         output_base->compositor->hdi_renderer->repaint_output(output_base, damage);
-        hps->framebuffer = output->framebuffer[output->current_framebuffer_id];
+        hps->framebuffer = hdi_framebuffer;
     } else {
-        hps->framebuffer = output->gl_render_framebuffer[output->current_framebuffer_id];
+        hps->framebuffer = gl_framebuffer;
     }
 
-    weston_log("vaddr = %{public}p ,%{public}s %{public}d, %{public}s\n", hps->framebuffer->virAddr,__func__,__LINE__,__FILE__);
-    output->current_framebuffer_id = (output->current_framebuffer_id + 1) % 2;
-    weston_log("current_framebuffer_id = %{public}d %{public}s %{public}d, %{public}s\n", output->current_framebuffer_id, __func__,__LINE__,__FILE__);
     hdi_output_active_timer(output);
     LOG_EXIT();
     return 0;
