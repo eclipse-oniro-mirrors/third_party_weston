@@ -544,9 +544,10 @@ hdi_renderer_repaint_output(struct weston_output *output,
 
     struct weston_view *view;
     wl_list_for_each_reverse(view, &compositor->view_list, link) {
-	    if (view->renderer_type == WESTON_RENDERER_TYPE_GPU) {
+        if (view->renderer_type != WESTON_RENDERER_TYPE_HDI) {
             continue;
         }
+
         struct hdi_surface_state *hss = (struct hdi_surface_state *)view->surface->hdi_renderer_state;
         if (hss == NULL) {
             continue;
@@ -588,6 +589,10 @@ hdi_renderer_repaint_output(struct weston_output *output,
     }
 
     wl_list_for_each_reverse(view, &compositor->view_list, link) {
+        if (view->renderer_type != WESTON_RENDERER_TYPE_HDI) {
+            continue;
+        }
+
         struct hdi_surface_state *hss = (struct hdi_surface_state *)view->surface->hdi_renderer_state;
         if (hss == NULL) {
             continue;
