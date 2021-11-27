@@ -347,7 +347,7 @@ drm_output_render_pixman(struct drm_output_state *state,
 	pixman_renderer_output_set_hw_extra_damage(&output->base,
 						   &output->previous_damage);
 
-	ec->renderer->repaint_output(&output->base, damage);
+	ec->hdi_renderer->repaint_output(&output->base, damage);
 
 	pixman_region32_copy(&output->previous_damage, damage);
 
@@ -3064,7 +3064,7 @@ drm_backend_create(struct weston_compositor *compositor,
 	// 				    renderer_switch_binding, b);
 
 
-	if (compositor->renderer->import_dmabuf) {
+	if (compositor->hdi_renderer->import_dmabuf) {
 		if (linux_dmabuf_setup(compositor) < 0)
 			weston_log("Error: initializing dmabuf "
 				   "support failed.\n");

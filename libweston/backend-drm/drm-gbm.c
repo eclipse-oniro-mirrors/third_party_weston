@@ -277,7 +277,7 @@ drm_output_render_gl(struct drm_output_state *state, pixman_region32_t *damage)
 	struct gbm_bo *bo;
 	struct drm_fb *ret;
 
-	output->base.compositor->renderer->repaint_output(&output->base,
+	output->base.compositor->gpu_renderer->repaint_output(&output->base,
 							  damage);
 
 	bo = gbm_surface_lock_front_buffer(output->gbm_surface);
@@ -309,7 +309,7 @@ switch_to_gl_renderer(struct drm_backend *b)
 	if (!b->use_pixman)
 		return;
 
-	dmabuf_support_inited = !!b->compositor->renderer->import_dmabuf;
+	dmabuf_support_inited = !!b->compositor->gpu_renderer->import_dmabuf;
 	linux_explicit_sync_inited =
 		b->compositor->capabilities & WESTON_CAP_EXPLICIT_SYNC;
 
@@ -325,7 +325,7 @@ switch_to_gl_renderer(struct drm_backend *b)
 	wl_list_for_each(output, &b->compositor->output_list, base.link)
 		pixman_renderer_output_destroy(&output->base);
 
-	b->compositor->renderer->destroy(b->compositor);
+	b->compositor->gpu_renderer->destroy(b->compositor);
 
 	if (drm_backend_create_gl_renderer(b) < 0) {
 		gbm_device_destroy(b->gbm);
@@ -339,7 +339,7 @@ switch_to_gl_renderer(struct drm_backend *b)
 
 	b->use_pixman = 0;
 
-	if (!dmabuf_support_inited && b->compositor->renderer->import_dmabuf) {
+	if (!dmabuf_support_inited && b->compositor->gpu_renderer->import_dmabuf) {
 		if (linux_dmabuf_setup(b->compositor) < 0)
 			weston_log("Error: initializing dmabuf "
 				   "support failed.\n");

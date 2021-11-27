@@ -46,7 +46,7 @@ pixman_renderer_create_surface(struct weston_surface *surface);
 struct pixman_output_state *
 get_output_state(struct weston_output *output)
 {
-	return (struct pixman_output_state *)output->renderer_state;
+	return (struct pixman_output_state *)output->hdi_renderer_state;
 }
 
 static int
@@ -55,16 +55,16 @@ pixman_renderer_create_surface(struct weston_surface *surface);
 struct pixman_surface_state *
 get_surface_state(struct weston_surface *surface)
 {
-	if (!surface->renderer_state)
+	if (!surface->hdi_renderer_state)
 		pixman_renderer_create_surface(surface);
 
-	return (struct pixman_surface_state *)surface->renderer_state;
+	return (struct pixman_surface_state *)surface->hdi_renderer_state;
 }
 
 struct pixman_renderer *
 get_renderer(struct weston_compositor *ec)
 {
-	return (struct pixman_renderer *)ec->renderer;
+	return (struct pixman_renderer *)ec->hdi_renderer;
 }
 
 static int
@@ -314,7 +314,7 @@ repaint_region(struct weston_view *ev, struct weston_output *output,
 	       pixman_op_t pixman_op)
 {
 	struct pixman_renderer *pr =
-		(struct pixman_renderer *) output->compositor->renderer;
+		(struct pixman_renderer *) output->compositor->hdi_renderer;
 	struct pixman_surface_state *ps = get_surface_state(ev->surface);
 	struct pixman_output_state *po = get_output_state(output);
 	struct weston_buffer_viewport *vp = &ev->surface->buffer_viewport;
@@ -694,7 +694,7 @@ pixman_renderer_surface_state_destroy(struct pixman_surface_state *ps)
 		ps->buffer_destroy_listener.notify = NULL;
 	}
 
-	ps->surface->renderer_state = NULL;
+	ps->surface->hdi_renderer_state = NULL;
 
 	if (ps->image) {
         tde_unref_image_hook(ps);
@@ -741,7 +741,7 @@ pixman_renderer_create_surface(struct weston_surface *surface)
 
     tde_surface_state_alloc_hook(ps);
 
-	surface->renderer_state = ps;
+	surface->hdi_renderer_state = ps;
 
 	ps->surface = surface;
 
@@ -794,7 +794,7 @@ pixman_renderer_destroy(struct weston_compositor *ec)
 	tde_renderer_free_hook(pr);
 	free(pr);
 
-	ec->renderer = NULL;
+	ec->hdi_renderer = NULL;
 }
 
 static void
@@ -894,7 +894,7 @@ pixman_renderer_init(struct weston_compositor *ec)
 		pixman_renderer_surface_get_content_size;
 	renderer->base.surface_copy_content =
 		pixman_renderer_surface_copy_content;
-	ec->renderer = &renderer->base;
+	ec->hdi_renderer = &renderer->base;
 	ec->capabilities |= WESTON_CAP_ROTATION_ANY;
 	ec->capabilities |= WESTON_CAP_VIEW_CLIP_MASK;
 
@@ -974,7 +974,7 @@ pixman_renderer_output_create(struct weston_output *output,
 		}
 	}
 
-	output->renderer_state = po;
+	output->hdi_renderer_state = po;
 
 	return 0;
 }

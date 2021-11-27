@@ -456,22 +456,21 @@ gl_renderer_get_egl_config(struct gl_renderer *gr,
 }
 
 int
-gl_renderer_setup_egl_display(struct gl_renderer *gr,
-			      void *native_display)
+gl_renderer_setup_egl_display(struct gl_renderer *gr)
 {
 	gr->egl_display = NULL;
 
 	/* extension_suffix is supported */
 	if (gr->has_platform_base)
 		gr->egl_display = gr->get_platform_display(gr->platform,
-							   native_display,
+							   gr->device,
 							   NULL);
 
 	if (!gr->egl_display) {
 		weston_log("warning: either no EGL_EXT_platform_base "
 			   "support or specific platform support; "
 			   "falling back to eglGetDisplay.\n");
-		gr->egl_display = eglGetDisplay(native_display);
+		gr->egl_display = eglGetDisplay(gr->device);
 	}
 
 	if (!gr->egl_display) {

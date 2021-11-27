@@ -585,7 +585,12 @@ WL_EXPORT void
 weston_surface_set_color(struct weston_surface *surface,
 		 float red, float green, float blue, float alpha)
 {
-	surface->compositor->renderer->surface_set_color(surface, red, green, blue, alpha);
+	if (surface->compositor->gpu_renderer) {
+		surface->compositor->gpu_renderer->surface_set_color(surface, red, green, blue, alpha);
+	}
+	else {
+		surface->compositor->hdi_renderer->surface_set_color(surface, red, green, blue, alpha);
+	}
 	surface->is_opaque = !(alpha < 1.0);
 }
 
@@ -2439,7 +2444,10 @@ weston_surface_attach(struct weston_surface *surface,
 			weston_surface_unmap(surface);
 	}
 
-	surface->compositor->renderer->attach(surface, buffer);
+	surface->compositor->hdi_renderer->attach(surface, buffer);
+	if (surface->compositor->gpu_renderer) {
+		surface->compositor->gpu_renderer->attach(surface, buffer);
+	}
 
 	weston_surface_calculate_size_from_buffer(surface);
 	weston_presentation_feedback_discard_list(&surface->feedback_list);
@@ -2475,8 +2483,14 @@ static void
 surface_flush_damage(struct weston_surface *surface)
 {
 	if (surface->buffer_ref.buffer &&
-	    wl_shm_buffer_get(surface->buffer_ref.buffer->resource))
-		surface->compositor->renderer->flush_damage(surface);
+	    wl_shm_buffer_get(surface->buffer_ref.buffer->resource)) {
+		if (surface->compositor->gpu_renderer) {
+			surface->compositor->gpu_renderer->flush_damage(surface);
+		}
+		else {
+			surface->compositor->hdi_renderer->flush_damage(surface);
+		}
+    }
 
 // OHOS remove timeline
 //	if (pixman_region32_not_empty(&surface->damage))
@@ -2704,6 +2718,19 @@ weston_compositor_build_view_list(struct weston_compositor *compositor)
 	wl_list_for_each(layer, &compositor->layer_list, link)
 		wl_list_for_each(view, &layer->view_list.link, layer_link.link)
 			surface_free_unused_subsurface_views(view->surface);
+
+	uint32_t view_count = wl_list_length(&compositor->view_list);
+	uint32_t index = 0;
+	wl_list_for_each_reverse(view, &compositor->view_list, link) {
+		if (index < view_count / 2 && compositor->gpu_renderer) {
+			view->renderer_type = WESTON_RENDERER_TYPE_GPU;
+		}
+		else {
+			view->renderer_type = WESTON_RENDERER_TYPE_HDI;
+		}
+		index++;
+	}
+
     LOG_EXIT();
 }
 
@@ -4327,7 +4354,7 @@ WL_EXPORT void
 weston_surface_get_content_size(struct weston_surface *surface,
 				int *width, int *height)
 {
-	struct weston_renderer *rer = surface->compositor->renderer;
+	struct weston_renderer *rer = surface->compositor->hdi_renderer;
 
 	if (!rer->surface_get_content_size) {
 		*width = 0;
@@ -4422,7 +4449,7 @@ weston_surface_copy_content(struct weston_surface *surface,
 			    int src_x, int src_y,
 			    int width, int height)
 {
-	struct weston_renderer *rer = surface->compositor->renderer;
+	struct weston_renderer *rer = surface->compositor->hdi_renderer;
 	int cw, ch;
 	const size_t bytespp = 4; /* PIXMAN_a8b8g8r8 */
 
@@ -7584,8 +7611,15 @@ weston_compositor_shutdown(struct weston_compositor *ec)
 	wl_list_for_each_safe(output, next, &ec->pending_output_list, link)
 		output->destroy(output);
 
-	if (ec->renderer)
-		ec->renderer->destroy(ec);
+	if (ec->hdi_renderer) {
+		if (ec->gpu_renderer) {
+			ec->gpu_renderer->destroy(ec);
+		}
+
+		if (ec->hdi_renderer) {
+			ec->hdi_renderer->destroy(ec);
+		}
+    }
 
 	weston_binding_list_destroy_all(&ec->key_binding_list);
 	weston_binding_list_destroy_all(&ec->modifier_binding_list);
@@ -7731,8 +7765,11 @@ weston_compositor_import_dmabuf(struct weston_compositor *compositor,
 				struct linux_dmabuf_buffer *buffer)
 {
 	struct weston_renderer *renderer;
-
-	renderer = compositor->renderer;
+    
+	renderer = compositor->gpu_renderer;
+	if (!renderer) {
+		renderer = compositor->hdi_renderer;
+	}
 
 	if (renderer->import_dmabuf == NULL)
 		return false;

@@ -46,10 +46,12 @@ extern "C" {
 DEFINE_LOG_LABEL("HdiOutput");
 
 #define HDI_OUTPUT_FRMAEBUFFER_SIZE 2
+#define HDI_OUTPUT_FRMAEBUFFER_GL_SIZE 2
 struct hdi_output {
     struct weston_output base;
     struct weston_mode mode;
     BufferHandle *framebuffer[HDI_OUTPUT_FRMAEBUFFER_SIZE];
+    BufferHandle *gl_render_framebuffer[HDI_OUTPUT_FRMAEBUFFER_GL_SIZE];
     uint32_t current_framebuffer_id;
     struct wl_event_source *finish_frame_timer;
 };
@@ -118,11 +120,41 @@ hdi_output_repaint(struct weston_output *output_base,
     struct hdi_output *output = to_hdi_output(output_base);
     struct weston_head *h = weston_output_get_first_head(output_base);
     hps->device_id = hdi_head_get_device_id(h);
+    struct weston_view *view;
+    bool has_renderer_gpu = false;
+    bool has_renderer_hdi = false;
+    wl_list_for_each_reverse(view, &output_base->compositor->view_list, link) {
+        if (view->renderer_type == WESTON_RENDERER_TYPE_GPU) {
+            has_renderer_gpu = true;
+        }
 
-    hps->framebuffer = output->framebuffer[output->current_framebuffer_id];
+        if (view->renderer_type == WESTON_RENDERER_TYPE_HDI) {
+            has_renderer_hdi = true;
+        }
+    }
+
+    if (has_renderer_gpu) {
+        weston_log("########has_renderer_gpu repaint_output %{public}s %{public}d, %{public}s\n",__func__,__LINE__,__FILE__);
+        output_base->compositor->gpu_renderer->repaint_output(output_base, damage);
+
+        if (has_renderer_hdi) {
+             weston_log("########set gpu renderer buffer %{public}s %{public}d, %{public}s\n",__func__,__LINE__,__FILE__);
+            // set gpu renderer buffer ...
+            hdi_renderer_output_set_gpu_buffer(output_base, output->gl_render_framebuffer[output->current_framebuffer_id]);
+        }
+    }
+
+    if (has_renderer_hdi) {
+        weston_log("########has_renderer_hdi repaint_output %{public}s %{public}d, %{public}s\n",__func__,__LINE__,__FILE__);
+        output_base->compositor->hdi_renderer->repaint_output(output_base, damage);
+        hps->framebuffer = output->framebuffer[output->current_framebuffer_id];
+    } else {
+        hps->framebuffer = output->gl_render_framebuffer[output->current_framebuffer_id];
+    }
+
+    weston_log("vaddr = %{public}p ,%{public}s %{public}d, %{public}s\n", hps->framebuffer->virAddr,__func__,__LINE__,__FILE__);
     output->current_framebuffer_id = (output->current_framebuffer_id + 1) % 2;
-
-    output_base->compositor->renderer->repaint_output(output_base, damage);
+    weston_log("current_framebuffer_id = %{public}d %{public}s %{public}d, %{public}s\n", output->current_framebuffer_id, __func__,__LINE__,__FILE__);
     hdi_output_active_timer(output);
     LOG_EXIT();
     return 0;
@@ -197,6 +229,7 @@ hdi_output_enable(struct weston_output *base)
     LOG_ENTER();
     struct hdi_output *output = to_hdi_output(base);
     struct hdi_backend *b = to_hdi_backend(base->compositor);
+    struct gl_renderer_fbo_options fbo_options;
 
     switch (b->renderer_type) {
         case HDI_RENDERER_HDI:
@@ -216,6 +249,18 @@ hdi_output_enable(struct weston_output *base)
         LOG_CORE("GrallocFuncs.Mmap return %p", output->framebuffer[i]->virAddr);
     }
 
+    info.format = PIXEL_FMT_RGBA_8888;
+    for (int i = 0; i < HDI_OUTPUT_FRMAEBUFFER_GL_SIZE; i++) {
+        int ret = b->display_gralloc->AllocMem(info, output->gl_render_framebuffer[i]);
+        LOG_CORE("GrallocFuncs.AllocMem return %d", ret);
+        fbo_options.handle[i] = output->gl_render_framebuffer[i];
+        void *ptr = b->display_gralloc->Mmap(*output->gl_render_framebuffer[i]);
+        LOG_CORE("GrallocFuncs.Mmap return %p", output->gl_render_framebuffer[i]->virAddr);
+    }
+
+    if (base->compositor->gpu_renderer) {
+        b->glri->output_fbo_create(base, &fbo_options);
+    }
     output->base.start_repaint_loop = hdi_output_start_repaint_loop;
     output->base.repaint = hdi_output_repaint;
     output->base.assign_planes = NULL;
@@ -223,7 +268,7 @@ hdi_output_enable(struct weston_output *base)
     output->base.switch_mode = NULL;
     output->base.set_gamma = NULL;
     output->base.set_backlight = NULL;
-
+    output->current_framebuffer_id = 0;
     hdi_renderer_output_create(base, NULL);
     hdi_output_create_timer(output);
     hdi_output_active_timer(output);
@@ -253,6 +298,14 @@ hdi_output_disable(struct weston_output *base)
         b->display_gralloc->FreeMem(*output->framebuffer[i]);
         LOG_CORE("GrallocFuncs.FreeMem");
     }
+
+    for (int i = 0; i < HDI_OUTPUT_FRMAEBUFFER_GL_SIZE; i++) {
+        int ret = b->display_gralloc->Unmap(*output->gl_render_framebuffer[i]);
+        LOG_CORE("GrallocFuncs.Unmap");
+        b->display_gralloc->FreeMem(*output->gl_render_framebuffer[i]);
+        LOG_CORE("GrallocFuncs.FreeMem");
+    }
+
 
     switch (b->renderer_type) {
         case HDI_RENDERER_HDI:
