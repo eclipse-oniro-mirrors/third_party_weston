@@ -29,6 +29,10 @@
 #include <cinttypes>
 #include <sstream>
 #include <sys/time.h>
+#include <vector>
+
+#include "hdi_backend.h"
+#include "hdi_head.h"
 
 // C header adapter
 extern "C" {
@@ -38,18 +42,11 @@ extern "C" {
 #include "shared/helpers.h"
 }
 
-#include "hdi_backend.h"
-#include "hdi_head.h"
-
 #include "libweston/trace.h"
 DEFINE_LOG_LABEL("HdiRenderr");
 
 struct hdi_renderer {
     struct weston_renderer base;
-};
-
-struct hdi_output_state {
-    int a;
 };
 
 struct hdi_surface_state {
@@ -71,6 +68,10 @@ struct hdi_surface_state {
     CompositionType comp_type;
     TransformType rotate_type;
     BufferHandle *bh;
+};
+
+struct hdi_output_state {
+    std::vector<struct hdi_surface_state *> layers;
 };
 
 static BufferHandle *
@@ -524,6 +525,9 @@ hdi_renderer_repaint_output(struct weston_output *output,
     struct hdi_backend *b = to_hdi_backend(compositor);
     struct weston_head *whead = weston_output_get_first_head(output);
     uint32_t device_id = hdi_head_get_device_id(whead);
+    auto ho = reinterpret_cast<struct hdi_output_state *>(output->renderer_state);
+    auto old_layers = ho->layers;
+    ho->layers.clear();
 
     int32_t zorder = 1;
     BlendType blend_type = BLEND_SRC;
@@ -538,6 +542,7 @@ hdi_renderer_repaint_output(struct weston_output *output,
             continue;
         }
 
+        ho->layers.push_back(hss);
         hdi_renderer_surface_state_calc_rect(hss, output_damage, output, view);
         hss->zorder = zorder++;
         hss->blend_type = blend_type;
@@ -548,6 +553,38 @@ hdi_renderer_repaint_output(struct weston_output *output,
             hss->comp_type = COMPOSITION_DEVICE;
             BufferHandle *bh = hdi_renderer_surface_state_mmap(hss);
             dump_to_file(bh);
+        }
+    }
+
+    // close not composite layer
+    for (auto &hss : old_layers) {
+        bool occur = false;
+        for (const auto &layer : ho->layers) {
+            if (hss == layer) {
+                occur = true;
+                break;
+            }
+        }
+
+        if (!occur) {
+            int ret = b->layer_funcs->CloseLayer(hss->device_id, hss->layer_id);
+            LOG_CORE("LayerFuncs.CloseLayer %d return %d", hss->layer_id, ret);
+            hss->create_layer_retval = -1;
+        }
+    }
+
+    wl_list_for_each_reverse(view, &compositor->view_list, link) {
+        struct hdi_surface_state *hss = (struct hdi_surface_state *)view->surface->renderer_state;
+        if (hss == NULL) {
+            continue;
+        }
+
+        if (hdi_renderer_surface_state_create_layer(hss, b, output) != 0) {
+            continue;
+        }
+
+        if (hss->surface->type != WL_SURFACE_TYPE_VIDEO) {
+            BufferHandle *bh = hdi_renderer_surface_state_mmap(hss);
             int ret = b->layer_funcs->SetLayerBuffer(device_id, hss->layer_id, bh, -1);
             LOG_CORE("LayerFuncs.SetLayerBuffer return %d", ret);
         }

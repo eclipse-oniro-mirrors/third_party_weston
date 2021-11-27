@@ -30,6 +30,11 @@
 
 #include <libudev.h>
 
+#include "hdi_backend.h"
+#include "hdi_head.h"
+#include "hdi_output.h"
+#include "hdi_renderer.h"
+
 // C header adapter
 extern "C" {
 #include "libweston/backend-hdi.h"
@@ -40,11 +45,6 @@ extern "C" {
 #include "libweston/windowed-output-api.h"
 #include "shared/helpers.h"
 }
-
-#include "hdi_backend.h"
-#include "hdi_head.h"
-#include "hdi_output.h"
-#include "hdi_renderer.h"
 
 #include "libweston/trace.h"
 DEFINE_LOG_LABEL("HdiBackend");
