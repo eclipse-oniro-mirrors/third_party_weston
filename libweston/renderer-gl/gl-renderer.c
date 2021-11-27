@@ -3616,7 +3616,7 @@ gl_renderer_display_create(struct weston_compositor *ec,
 		gl_renderer_surface_get_content_size;
 	gr->base.surface_copy_content = gl_renderer_surface_copy_content;
 
-	if (gl_renderer_setup_egl_display(gr) < 0)
+	if (gl_renderer_setup_egl_display(gr, gr->device) < 0)
 		goto fail_device;
 
 	log_egl_info(gr->egl_display);
