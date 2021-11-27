@@ -594,6 +594,7 @@ hdi_renderer_repaint_output(struct weston_output *output,
         }
 
         struct hdi_surface_state *hss = (struct hdi_surface_state *)view->surface->hdi_renderer_state;
+        LOG_INFO("LayerOperation: %p", view);
         if (hss == NULL) {
             continue;
         }
@@ -708,13 +709,12 @@ hdi_renderer_output_create(struct weston_output *output,
     const struct hdi_renderer_output_options *options)
 {
     LOG_PASS();
-    struct hdi_output_state *ho = (struct hdi_output_state *)zalloc(sizeof *ho);
+    auto ho = new struct hdi_output_state();
     output->hdi_renderer_state = ho;
     struct weston_head *whead = weston_output_get_first_head(output);
     ho->device_id = hdi_head_get_device_id(whead);
     ho->create_layer_retval = -1;
     ho->is_use_gpu = false;
-
     return 0;
 }
 
@@ -722,8 +722,7 @@ void
 hdi_renderer_output_destroy(struct weston_output *output)
 {
     LOG_PASS();
-    struct hdi_output_state *ho =
-        (struct hdi_output_state *)output->hdi_renderer_state;
+    auto ho = (struct hdi_output_state *)output->hdi_renderer_state;
 
     if (ho->create_layer_retval == DISPLAY_SUCCESS) {
         struct hdi_backend *b = to_hdi_backend(output->compositor);
@@ -731,7 +730,7 @@ hdi_renderer_output_destroy(struct weston_output *output)
         LOG_CORE("LayerFuncs.CloseLayer return %d", ret);
     }
 
-    free(ho);
+    delete ho;
 }
 
 void
