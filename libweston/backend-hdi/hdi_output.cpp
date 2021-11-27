@@ -25,7 +25,8 @@
 
 #include "config.h"
 
-#include <assert.h>
+#include <cassert>
+#include <iomanip>
 #include <list>
 #include <sstream>
 
@@ -49,6 +50,7 @@ DEFINE_LOG_LABEL("HdiOutput");
 
 #define HDI_OUTPUT_FRMAEBUFFER_SIZE 2
 #define HDI_OUTPUT_FRMAEBUFFER_GL_SIZE 2
+
 struct hdi_output {
     struct weston_output base;
     struct weston_mode mode;
@@ -67,11 +69,10 @@ to_hdi_output(struct weston_output *base)
 static int
 hdi_output_start_repaint_loop(struct weston_output *output)
 {
-    LOG_ENTER();
+    LOG_SCOPE();
     struct timespec ts;
     weston_compositor_read_presentation_clock(output->compositor, &ts);
     weston_output_finish_frame(output, &ts, WP_PRESENTATION_FEEDBACK_INVALID);
-    LOG_EXIT();
     return 0;
 }
 
@@ -124,12 +125,76 @@ std::ostream &operator <<(std::ostream &os, const enum weston_renderer_type &typ
     return os;
 }
 
+static void dump_to_file(struct weston_buffer *buffer)
+{
+    static int32_t cnt = 0;
+    static int64_t last = 0;
+    cnt++;
+    int64_t now = (int64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+
+    if (access("/data/render_dump", F_OK) == -1) {
+        last = now;
+        return;
+    }
+
+    if (buffer == nullptr) {
+        return;
+    }
+
+    struct linux_dmabuf_buffer *dmabuf = linux_dmabuf_buffer_get(buffer->resource);
+    if (dmabuf == nullptr) {
+        LOG_ERROR("buffer->resource is not dmabuf");
+        return;
+    }
+
+    BufferHandle *bh = dmabuf->attributes.buffer_handle;
+    if (bh == NULL) {
+        LOG_ERROR("dmabuf have no BufferHandle");
+        return;
+    }
+
+    double diff = now - last;
+    if (diff > 1e10) {
+        diff = 0;
+    }
+    last = now;
+
+    const char *unit = nullptr;
+    if (diff > 1e9) {
+        unit = "s";
+        diff /= 1e9;
+    } else if (diff > 1e6) {
+        unit = "ms";
+        diff /= 1e6;
+    } else if (diff > 1e3) {
+        unit = "us";
+        diff /= 1e3;
+    } else {
+        unit = "ns";
+    }
+
+    std::stringstream ss;
+    ss << "/data/render_" << cnt << "_" << std::setprecision(3) << diff << unit << ".raw";
+    LOG_INFO("dumpimage: %s [fd=%d] (%dx%d)=%d [format=%d] [usage=%" PRIu64 "] {%" PRIu64 " -> %p}",
+        ss.str().c_str(), bh->fd, bh->width, bh->height,
+        bh->size, bh->format, bh->usage, bh->virAddr, bh->phyAddr);
+
+    auto fp = fopen(ss.str().c_str(), "a+");
+    if (fp == nullptr) {
+        return;
+    }
+
+    fwrite(bh->virAddr, bh->size, 1, fp);
+    fclose(fp);
+}
+
 static int
 hdi_output_repaint(struct weston_output *output_base,
                    pixman_region32_t *damage,
                    void *repaint_data)
 {
-    LOG_ENTER();
+    LOG_SCOPE();
     struct hdi_pending_state *hps =
         reinterpret_cast<struct hdi_pending_state *>(repaint_data);
     struct hdi_output *output = to_hdi_output(output_base);
@@ -158,6 +223,10 @@ hdi_output_repaint(struct weston_output *output_base,
         } else if (view->renderer_type == WESTON_RENDERER_TYPE_HDI) {
             need_hdi_render = true;
         }
+
+        if (view->surface->type != WL_SURFACE_TYPE_VIDEO) {
+            dump_to_file(view->surface->buffer_ref.buffer);
+        }
     }
 
     for (const auto &ss : sss) {
@@ -181,14 +250,13 @@ hdi_output_repaint(struct weston_output *output_base,
     }
 
     hdi_output_active_timer(output);
-    LOG_EXIT();
     return 0;
 }
 
 int
 hdi_output_set_mode(struct weston_output *base)
 {
-    LOG_ENTER();
+    LOG_SCOPE();
     struct hdi_output *output = to_hdi_output(base);
     int output_width, output_height;
 
@@ -244,14 +312,13 @@ hdi_output_set_mode(struct weston_output *base)
              base->name, active_mode_id,
              output->base.width, output->base.height, fresh_rate);
 
-    LOG_EXIT();
     return 0;
 }
 
 static int
 hdi_output_enable(struct weston_output *base)
 {
-    LOG_ENTER();
+    LOG_SCOPE();
     struct hdi_output *output = to_hdi_output(base);
     struct hdi_backend *b = to_hdi_backend(base->compositor);
     struct gl_renderer_fbo_options fbo_options;
@@ -297,20 +364,17 @@ hdi_output_enable(struct weston_output *base)
     hdi_renderer_output_create(base, NULL);
     hdi_output_create_timer(output);
     hdi_output_active_timer(output);
-
-    LOG_EXIT();
     return 0;
 }
 
 static int
 hdi_output_disable(struct weston_output *base)
 {
-    LOG_ENTER();
+    LOG_SCOPE();
     struct hdi_output *output = to_hdi_output(base);
     struct hdi_backend *b = to_hdi_backend(base->compositor);
 
     if (!base->enabled) {
-        LOG_EXIT();
         return 0;
     }
 
@@ -337,25 +401,23 @@ hdi_output_disable(struct weston_output *base)
             break;
     }
 
-    LOG_EXIT();
     return 0;
 }
 
 static void
 hdi_output_destroy(struct weston_output *base)
 {
-    LOG_ENTER();
+    LOG_SCOPE();
     hdi_output_disable(base);
     weston_output_release(base);
-
     free(to_hdi_output(base));
-    LOG_EXIT();
 }
 
 static int
 hdi_output_attach_head(struct weston_output *output_base,
                        struct weston_head *head_base)
 {
+    LOG_SCOPE();
     if (output_base->enabled == false) {
         return 0;
     }
@@ -368,6 +430,7 @@ static void
 hdi_output_detach_head(struct weston_output *output_base,
                        struct weston_head *head_base)
 {
+    LOG_SCOPE();
     if (output_base->enabled == false) {
         return;
     }
@@ -378,14 +441,12 @@ hdi_output_detach_head(struct weston_output *output_base,
 struct weston_output *
 hdi_output_create(struct weston_compositor *compositor, const char *name)
 {
-    LOG_ENTER();
-
-    assert(name && "name cannot be NULL.");
+    LOG_SCOPE();
+    assert(name && !"name cannot be NULL.");
 
     struct hdi_output *output = (struct hdi_output *)zalloc(sizeof *output);
     if (!output) {
-        weston_log("zalloc hdi_output failed");
-        LOG_EXIT();
+        LOG_ERROR("zalloc hdi_output failed");
         return NULL;
     }
 
@@ -398,7 +459,5 @@ hdi_output_create(struct weston_compositor *compositor, const char *name)
     output->base.detach_head = hdi_output_detach_head;
 
     weston_compositor_add_pending_output(&output->base, compositor);
-
-    LOG_EXIT();
     return &output->base;
 }
