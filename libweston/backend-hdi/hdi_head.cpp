@@ -71,13 +71,12 @@ hdi_vblank_callback(uint32_t seq, uint64_t ns, void *data)
 int
 hdi_head_create(struct weston_compositor *compositor, uint32_t device_id)
 {
-    LOG_ENTER();
+    LOG_SCOPE();
     struct hdi_backend *b = to_hdi_backend(compositor);
     assert(b->device_funcs);
 
     struct hdi_head *head = reinterpret_cast<struct hdi_head *>(zalloc(sizeof *head));
     if (head == NULL) {
-        LOG_EXIT();
         return -1;
     }
 
@@ -93,7 +92,7 @@ hdi_head_create(struct weston_compositor *compositor, uint32_t device_id)
         int ret = b->device_funcs->GetDisplayCapability(head->device_id, &head->displayCapability);
         LOG_CORE("DeviceFuncs.GetDisplayCapability return %d", ret);
     } else {
-        weston_log("GetDisplayCapability is NULL");
+        LOG_ERROR("GetDisplayCapability is NULL");
     }
 
     LOG_INFO("screen: %s, %ux%u", head->displayCapability.name,
@@ -102,15 +101,13 @@ hdi_head_create(struct weston_compositor *compositor, uint32_t device_id)
     weston_head_init(&head->base, head->displayCapability.name);
     weston_head_set_connection_status(&head->base, true);
     weston_compositor_add_head(compositor, &head->base);
-
-    LOG_EXIT();
     return 0;
 }
 
 void
 hdi_head_destroy(struct weston_head *base)
 {
-    LOG_PASS();
+    LOG_SCOPE();
     if (hdi_head_get_device_id(base) == 0) {
         struct hdi_backend *b = to_hdi_backend(base->compositor);
         if (b != NULL) {

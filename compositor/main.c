@@ -3515,6 +3515,7 @@ wet_main(int argc, char *argv[])
     LOG_ENTERS("wl_display_run");
 	wl_display_run(display);
     LOG_EXITS("wl_display_run");
+    LOG_ENTERS("exiting");
 
 	/* Allow for setting return exit code after
 	* wl_display_run returns normally. This is
