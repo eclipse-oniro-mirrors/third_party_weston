@@ -161,19 +161,15 @@ hdi_output_set_mode(struct weston_output *base)
 
     int width = 0;
     int height = 0;
-    int fresh_rate = 0;
+    int fresh_rate = 60;
     for (int i = 0; i < mode_number; i++) {
         LOG_INFO("modes(%d) %dx%d %dHz", modes[i].id, modes[i].width, modes[i].height, modes[i].freshRate);
-        if (width < modes[i].width ||
-            height < modes[i].height ||
-            fresh_rate < modes[i].freshRate) {
-            active_mode_id = modes[i].id;
+        if (modes[i].id == active_mode_id) {
             width = modes[i].width;
             height = modes[i].height;
             fresh_rate = modes[i].freshRate;
         }
     }
-    b->device_funcs->SetDisplayMode(device_id, active_mode_id);
 
     weston_head_set_monitor_strings(whead, "weston", "hdi", NULL);
     weston_head_set_physical_size(whead, width, height);
