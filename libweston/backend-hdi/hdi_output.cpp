@@ -26,6 +26,8 @@
 #include "config.h"
 
 #include <assert.h>
+#include <list>
+#include <sstream>
 
 #include <display_type.h>
 
@@ -109,6 +111,19 @@ hdi_output_destroy_timer(struct hdi_output *output)
     output->finish_frame_timer = NULL;
 }
 
+std::ostream &operator <<(std::ostream &os, const enum weston_renderer_type &type)
+{
+    switch (type) {
+        case WESTON_RENDERER_TYPE_GPU:
+            os << "GPU";
+            break;
+        case WESTON_RENDERER_TYPE_HDI:
+            os << "HDI";
+            break;
+    }
+    return os;
+}
+
 static int
 hdi_output_repaint(struct weston_output *output_base,
                    pixman_region32_t *damage,
@@ -129,13 +144,24 @@ hdi_output_repaint(struct weston_output *output_base,
     // assign view to renderer
     bool need_gpu_render = false;
     bool need_hdi_render = false;
+    std::list<std::stringstream> sss;
+    int32_t cnt = 0;
     struct weston_view *view;
     wl_list_for_each_reverse(view, &output_base->compositor->view_list, link) {
+        if (cnt++ % 5 == 0) {
+            sss.emplace_back();
+            sss.back() << "view_list:";
+        }
+        sss.back() << " [" << view->renderer_type << "]" << (void *)view << ",";
         if (view->renderer_type == WESTON_RENDERER_TYPE_GPU) {
             need_gpu_render = true;
         } else if (view->renderer_type == WESTON_RENDERER_TYPE_HDI) {
             need_hdi_render = true;
         }
+    }
+
+    for (const auto &ss : sss) {
+        LOG_INFO("%s", ss.str().c_str());
     }
 
     // gpu render
