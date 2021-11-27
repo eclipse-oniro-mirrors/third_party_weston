@@ -69,6 +69,7 @@
 
 #include "libweston/trace.h"
 #include "libweston/soft_vsync.h" //OHOS vsync module
+#include "mix_renderer.h"
 DEFINE_LOG_LABEL("DrmBackend");
 
 static const char default_seat[] = "seat0";
@@ -347,7 +348,7 @@ drm_output_render_pixman(struct drm_output_state *state,
 	pixman_renderer_output_set_hw_extra_damage(&output->base,
 						   &output->previous_damage);
 
-	ec->hdi_renderer->repaint_output(&output->base, damage);
+	ec->renderer->repaint_output(&output->base, damage);
 
 	pixman_region32_copy(&output->previous_damage, damage);
 
@@ -2987,6 +2988,11 @@ drm_backend_create(struct weston_compositor *compositor,
 			goto err_udev_dev;
 		}
 	} else {
+		// OHOS mix renderer
+		if (mix_renderer_init(compositor) < 0) {
+			LOG_ERROR("mix_renderer_init failed");
+			goto err_udev_dev;
+		}
 		if (init_egl(b) < 0) {
 			weston_log("failed to initialize egl\n");
 			goto err_udev_dev;
@@ -3064,7 +3070,7 @@ drm_backend_create(struct weston_compositor *compositor,
 	// 				    renderer_switch_binding, b);
 
 
-	if (compositor->hdi_renderer->import_dmabuf) {
+	if (compositor->renderer->import_dmabuf) {
 		if (linux_dmabuf_setup(compositor) < 0)
 			weston_log("Error: initializing dmabuf "
 				   "support failed.\n");

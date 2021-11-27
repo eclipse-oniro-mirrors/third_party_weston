@@ -35,6 +35,8 @@
 #include "hdi_output.h"
 #include "hdi_renderer.h"
 
+#include "mix_renderer.h"
+
 // C header adapter
 extern "C" {
 #include "libweston/backend-hdi.h"
@@ -245,30 +247,24 @@ hdi_backend_create(struct weston_compositor *compositor,
     b->base.device_changed = NULL;
     b->base.can_scanout_dmabuf = NULL;
 
-    // 1. attr init
-    if (config->use_hdi) {
-        b->renderer_type = HDI_RENDERER_HDI;
+    // init renderer
+    ret = mix_renderer_init(compositor);
+    if (ret < 0) {
+        LOG_ERROR("mix_renderer_init failed");
+        goto err_free;
     }
 
-    // init renderer
-    switch (b->renderer_type) {
-        case HDI_RENDERER_HDI: {
-            ret = hdi_renderer_init(compositor);
-            if (ret < 0) {
-                goto err_free;
-            }
-        } break;
-        default: {
-            assert(0 && "invalid renderer type");
-            goto err_free;
-        } break;
+    ret = hdi_renderer_init(compositor);
+    if (ret < 0) {
+        LOG_ERROR("hdi_renderer_init failed");
+        goto err_free;
     }
 
     ret = hdi_gl_renderer_init(b);
     if (ret < 0) {
         weston_log("hdi_gl_renderer_init failed, gpu render disable.");
-        //goto err_free;
     }
+
     // init hdi device
     ret = DeviceInitialize(&b->device_funcs);
     LOG_CORE("DeviceInitialize return %d", ret);
