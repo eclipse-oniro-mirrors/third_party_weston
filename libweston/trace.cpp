@@ -54,8 +54,8 @@ public:
 
     virtual void Output(Cstr label, Cstr func, int32_t line, Cstr color, Cstr str) override
     {
-        OHOS::HiviewDFX::HiLog::Info({(LogType)3, 0, "Weston"}, "\033[31m%{public}-10s |"
-            " \033[33m%{public}-45s|\033[34m%{public}-5d\033[0m:%{public}s %s%{public}s\033[0m",
+        OHOS::HiviewDFX::HiLog::Info({(LogType)3, 0, "Weston"}, "\033[31m%{public}-12s |"
+            " \033[33m%{public}-45s|\033[34m%{public}-5d\033[0m:%{public}s %{public}s%{public}s\033[0m",
             label, func, line, space, color, str);
     }
 
@@ -139,12 +139,12 @@ ScopedLog::ScopedLog(Cstr label, Cstr func, int32_t line, Cstr str)
     func_ = func;
     line_ = line;
     str_ = str;
-    log_printf(label_, func_, line_, "\033[33m %s {", str_);
+    log_printf(label_, func_, line_, "\033[33m", "%s{", str_);
     log_level_inc();
 }
 
 ScopedLog::~ScopedLog()
 {
     log_level_dec();
-    log_printf(label_, func_, line_, "\033[33m } %s", str_);
+    log_printf(label_, func_, line_, "\033[33m", "} %s", str_);
 }

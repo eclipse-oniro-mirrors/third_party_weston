@@ -139,6 +139,7 @@ static void dump_to_file(struct weston_buffer *buffer)
     }
 
     if (buffer == nullptr) {
+        LOG_ERROR("buffer is nullptr");
         return;
     }
 
@@ -218,6 +219,7 @@ hdi_output_repaint(struct weston_output *output_base,
             sss.back() << "view_list:";
         }
         sss.back() << " [" << view->renderer_type << "]" << (void *)view << ",";
+
         if (view->renderer_type == WESTON_RENDERER_TYPE_GPU) {
             need_gpu_render = true;
         } else if (view->renderer_type == WESTON_RENDERER_TYPE_HDI) {
@@ -315,6 +317,18 @@ hdi_output_set_mode(struct weston_output *base)
     return 0;
 }
 
+static void
+hdi_output_assign_planes(struct weston_output *output_base,
+                         void *repaint_data)
+{
+    struct weston_view *view;
+    wl_list_for_each(view, &output_base->compositor->view_list, link) {
+        weston_view_move_to_plane(view, &output_base->compositor->primary_plane);
+        view->psf_flags = 0;
+        view->surface->keep_buffer = true;
+    }
+}
+
 static int
 hdi_output_enable(struct weston_output *base)
 {
@@ -355,7 +369,7 @@ hdi_output_enable(struct weston_output *base)
     }
     output->base.start_repaint_loop = hdi_output_start_repaint_loop;
     output->base.repaint = hdi_output_repaint;
-    output->base.assign_planes = NULL;
+    output->base.assign_planes = hdi_output_assign_planes;
     output->base.set_dpms = NULL;
     output->base.switch_mode = NULL;
     output->base.set_gamma = NULL;
