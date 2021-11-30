@@ -241,7 +241,7 @@ static void dump_to_file(struct pixman_surface_state *ps)
 static int tde_repaint_region(struct weston_view *ev,
                               struct weston_output *output,
                               pixman_region32_t *buffer_region,
-                              pixman_region32_t *repaint_output)
+                              pixman_region32_t *output_damage)
 {
     struct pixman_renderer *renderer = (struct pixman_renderer *)output->compositor->renderer;
     struct pixman_surface_state *surface = get_surface_state(ev->surface);
@@ -265,18 +265,21 @@ static int tde_repaint_region(struct weston_view *ev,
         pixman_region32_t surface_region;
         pixman_region32_init_rect(&surface_region, 0, 0, ev->surface->width, ev->surface->height);
 
+        pixman_region32_t repaint_output;
+        pixman_region32_init(&repaint_output);
+        pixman_region32_copy(&repaint_output, output_damage);
         if (output->zoom.active) {
-            weston_matrix_transform_region(repaint_output, &output->matrix, repaint_output);
+            weston_matrix_transform_region(&repaint_output, &output->matrix, &repaint_output);
         } else {
-            pixman_region32_translate(repaint_output, -output->x, -output->y);
+            pixman_region32_translate(&repaint_output, -output->x, -output->y);
             weston_transformed_region(output->width, output->height,
                     static_cast<enum wl_output_transform>(output->transform),
                     output->current_scale,
-                    repaint_output, repaint_output);
+                    &repaint_output, &repaint_output);
         }
 
         LOG_REGION(1, &surface_region);
-        LOG_REGION(2, repaint_output);
+        LOG_REGION(2, &repaint_output);
 
         struct weston_matrix matrix = output->inverse_matrix;
         if (ev->transform.enabled) {
@@ -329,7 +332,7 @@ static int tde_repaint_region(struct weston_view *ev,
         LOG_INFO("%d %d", ev->surface->width, ev->surface->height);
 
         weston_view_to_global_region(ev, &global_repaint_region, &surface_region);
-        pixman_region32_intersect(&global_repaint_region, &global_repaint_region, repaint_output);
+        pixman_region32_intersect(&global_repaint_region, &global_repaint_region, &repaint_output);
         LOG_REGION(3, &global_repaint_region);
 
         pixman_region32_t surface_repaint_region;
@@ -342,7 +345,7 @@ static int tde_repaint_region(struct weston_view *ev,
         LOG_REGION(5, &buffer_repaint_region);
         pixman_region32_fini(&surface_repaint_region);
         pixman_region32_fini(&surface_region);
-        pixman_region32_fini(repaint_output);
+        pixman_region32_fini(&repaint_output);
     }
     pixman_box32_t *global_box = pixman_region32_extents(&global_repaint_region);
     IRect dstRect = {
