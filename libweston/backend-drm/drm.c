@@ -492,6 +492,7 @@ drm_output_repaint(struct weston_output *output_base,
 	if (!scanout_state || !scanout_state->fb)
 		goto err;
 
+	wl_signal_emit(&output_base->frame_signal, damage); // OHOS ScreenShot: move to output->repaint
 	return 0;
 
 err:

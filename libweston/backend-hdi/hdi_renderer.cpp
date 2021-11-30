@@ -35,6 +35,7 @@
 
 #include "hdi_backend.h"
 #include "hdi_head.h"
+#include "hdi_output.h"
 
 // C header adapter
 extern "C" {
@@ -331,6 +332,19 @@ hdi_renderer_read_pixels(struct weston_output *output,
             uint32_t x, uint32_t y,
             uint32_t width, uint32_t height)
 {
+    BufferHandle *bh = hdi_output_get_framebuffer(output);
+    int32_t bpp = bh->stride / bh->width;
+    int32_t stride = bh->stride;
+
+    if (x == 0 && width == bh->width) {
+        memcpy(pixels, (uint8_t *)bh->virAddr + y * stride, height * stride);
+        return 0;
+    }
+
+    for (int32_t j = y; j < height; j++) {
+        memcpy((uint8_t *)pixels + j * stride + x * bpp,
+               (uint8_t *)bh->virAddr + j * stride + x * bpp, width * bpp);
+    }
     return 0;
 }
 

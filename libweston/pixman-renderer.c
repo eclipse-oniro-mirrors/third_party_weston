@@ -579,7 +579,7 @@ pixman_renderer_repaint_output(struct weston_output *output,
 	}
 	pixman_region32_fini(&hw_damage);
 
-	wl_signal_emit(&output->frame_signal, output_damage);
+	// wl_signal_emit(&output->frame_signal, output_damage); // OHOS ScreenShot: move to output->repaint
 
 	/* Actual flip should be done by caller */
 }
