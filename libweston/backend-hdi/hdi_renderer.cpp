@@ -526,6 +526,7 @@ hdi_renderer_repaint_output(struct weston_output *output,
         hss->blend_type = BLEND_SRCOVER;
         if (hss->surface->type == WL_SURFACE_TYPE_VIDEO) {
             hss->comp_type = COMPOSITION_VIDEO;
+            hss->zorder += 100;
         } else {
             hss->comp_type = COMPOSITION_DEVICE;
             BufferHandle *bh = hdi_renderer_surface_state_mmap(hss);
