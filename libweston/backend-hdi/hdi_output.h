@@ -26,8 +26,6 @@
 #ifndef LIBWESTON_BACKEND_HDI_HDI_OUTPUT_H
 #define LIBWESTON_BACKEND_HDI_HDI_OUTPUT_H
 
-#include <buffer_handle.h>
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -40,9 +38,6 @@ hdi_output_create(struct weston_compositor *compositor, const char *name);
 
 int
 hdi_output_set_mode(struct weston_output *base);
-
-BufferHandle *
-hdi_output_get_framebuffer(struct weston_output *output);
 
 #ifdef __cplusplus
 }

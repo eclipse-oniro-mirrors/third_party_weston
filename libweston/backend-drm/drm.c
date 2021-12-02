@@ -69,7 +69,6 @@
 
 #include "libweston/trace.h"
 #include "libweston/soft_vsync.h" //OHOS vsync module
-#include "mix_renderer.h"
 DEFINE_LOG_LABEL("DrmBackend");
 
 static const char default_seat[] = "seat0";
@@ -492,7 +491,6 @@ drm_output_repaint(struct weston_output *output_base,
 	if (!scanout_state || !scanout_state->fb)
 		goto err;
 
-	wl_signal_emit(&output_base->frame_signal, damage); // OHOS ScreenShot: move to output->repaint
 	return 0;
 
 err:
@@ -2989,11 +2987,6 @@ drm_backend_create(struct weston_compositor *compositor,
 			goto err_udev_dev;
 		}
 	} else {
-		// OHOS mix renderer
-		if (mix_renderer_init(compositor) < 0) {
-			LOG_ERROR("mix_renderer_init failed");
-			goto err_udev_dev;
-		}
 		if (init_egl(b) < 0) {
 			weston_log("failed to initialize egl\n");
 			goto err_udev_dev;

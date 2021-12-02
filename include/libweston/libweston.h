@@ -243,8 +243,6 @@ struct weston_output {
 	struct wl_signal user_destroy_signal;
 
 	void *renderer_state;
-	void *hdi_renderer_state;
-	void *gpu_renderer_state;
 
 	struct wl_list link;
 	struct weston_compositor *compositor;
@@ -1074,8 +1072,6 @@ struct weston_compositor {
 	uint32_t capabilities; /* combination of enum weston_capability */
 
 	struct weston_renderer *renderer;
-	struct weston_renderer *hdi_renderer;
-	struct weston_renderer *gpu_renderer;
 
 	pixman_format_code_t read_format;
 
@@ -1229,10 +1225,6 @@ struct weston_region {
  * combined:
  *    Mparent * Mn * ... * M2 * M1
  */
-enum weston_renderer_type {
-	WESTON_RENDERER_TYPE_HDI = 0,
-	WESTON_RENDERER_TYPE_GPU = 1
-};
 
 struct weston_view {
 	struct weston_surface *surface;
@@ -1252,8 +1244,6 @@ struct weston_view {
 	float alpha;                     /* part of geometry, see below */
 
 	void *renderer_state;
-	void *hdi_renderer_state;
-	void *gpu_renderer_state;
 
 	/* Surface geometry state, mutable.
 	 * If you change anything, call weston_surface_geometry_dirty().
@@ -1319,7 +1309,6 @@ struct weston_view {
 	uint32_t psf_flags;
 
 	bool is_mapped;
-	enum weston_renderer_type renderer_type;
 };
 
 struct weston_surface_state {
@@ -1417,8 +1406,6 @@ struct weston_surface {
 	bool touched;
 
 	void *renderer_state;
-	void *hdi_renderer_state;
-	void *gpu_renderer_state;
 
 	struct wl_list views;
 

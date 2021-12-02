@@ -72,7 +72,7 @@
 #include "shared/os-compatibility.h"
 
 #define max(a, b) ((a) > (b) ? (a) : (b))
-#define VIRTUAL_OUTPUT_NAME "virtual_output"
+#define DUMMY_OUTPUT_NAME "dummy_output"
 
 #include "libweston/trace.h"
 DEFINE_LOG_LABEL("IVILayout");
@@ -104,6 +104,15 @@ struct ivi_rectangle
 };
 
 static struct ivi_layout ivilayout = {0};
+
+#ifdef USE_DUMMY_SCREEN
+static struct weston_output dummy_output = {0};
+static struct weston_output *
+get_dummy_output(void)
+{
+	return &dummy_output;
+}
+#endif /* USE_DUMMY_SCREEN */
 
 struct ivi_layout *
 get_instance(void)
@@ -305,6 +314,33 @@ create_screen(struct weston_compositor *ec)
 
 		wl_list_insert(&layout->screen_list, &iviscrn->link);
 	}
+
+#ifdef USE_DUMMY_SCREEN
+	output = get_dummy_output();
+	output->id = 1;
+	output->name = DUMMY_OUTPUT_NAME;
+	output->x = DUMMY_SCREEN_WIDTH;
+	output->y = 0;
+	output->width = DUMMY_SCREEN_WIDTH;
+	output->height = DUMMY_SCREEN_HEIGHT;
+
+	iviscrn = calloc(1, sizeof *iviscrn);
+	if (iviscrn == NULL) {
+		weston_log("fails to allocate memory\n");
+		return;
+	}
+
+	iviscrn->layout = layout;
+
+	iviscrn->output = output;
+
+	wl_list_init(&iviscrn->pending.layer_list);
+
+	wl_list_init(&iviscrn->order.layer_list);
+
+	wl_list_insert(&layout->screen_list, &iviscrn->link);
+#endif /* USE_DUMMY_SCREEN */
+
 }
 
 /**
@@ -2084,66 +2120,6 @@ ivi_layout_surface_create(struct weston_surface *wl_surface,
 	return ivisurf;
 }
 
-static void output_created_event(struct wl_listener *listener, void *data)
-{
-	LOG_ENTER();
-	struct ivi_layout *layout = get_instance();
-	struct weston_output *output = (struct weston_output*)data;
-	struct ivi_layout_screen *iviscrn = NULL;
-
-	LOG_INFO("hzj test, output created, id: %d", output->id);
-
-	wl_list_for_each(iviscrn, &layout->screen_list, link) {
-		if (iviscrn->output == output) {
-			LOG_ERROR("output already created");
-			return;
-		}
-	}
-
-	iviscrn = calloc(1, sizeof *iviscrn);
-	if (iviscrn == NULL) {
-		LOG_ERROR("fails to allocate memory\n");
-		return;
-	}
-
-	iviscrn->layout = layout;
-	iviscrn->output = output;
-
-	wl_list_init(&iviscrn->pending.layer_list);
-	wl_list_init(&iviscrn->order.layer_list);
-	wl_list_insert(&layout->screen_list, &iviscrn->link);
-
-	LOG_EXIT();
-}
-
-static void output_destroyed_event(struct wl_listener *listener, void *data)
-{
-	LOG_ENTER();
-	struct ivi_layout *layout = get_instance();
-	struct weston_output *output = (struct weston_output*)data;
-	struct ivi_layout_screen *iviscrn = NULL;
-	struct ivi_layout_layer  *ivilayer = NULL;
-	struct ivi_layout_layer  *next = NULL;
-
-	LOG_INFO("hzj test, output destroyed, id: %d", output->id);
-
-	iviscrn = get_screen_from_output(output);
-	if (iviscrn == NULL) {
-		LOG_ERROR("output does not exist");
-		return;
-	}
-
-	wl_list_for_each_safe(ivilayer, next,
-					&iviscrn->pending.layer_list, pending.link) {
-		ivi_layout_layer_destroy(ivilayer);
-	}
-
-	wl_list_remove(&iviscrn->link);
-	free(iviscrn);
-
-	LOG_EXIT();
-}
-
 static struct ivi_layout_interface ivi_layout_interface;
 static struct ivi_layout_interface_for_wms ivi_layout_interface_for_wms;
 
@@ -2175,12 +2151,6 @@ ivi_layout_init_with_compositor(struct weston_compositor *ec)
 
 	create_screen(ec);
 
-	layout->output_listener.created.notify = output_created_event;
-	layout->output_listener.destroyed.notify = output_destroyed_event;
-
-	wl_signal_add(&ec->output_created_signal, &layout->output_listener.created);
-	wl_signal_add(&ec->output_destroyed_signal, &layout->output_listener.destroyed);
-
 	layout->transitions = ivi_layout_transition_set_create(ec);
 	wl_list_init(&layout->pending_transition_list);
 
@@ -2190,88 +2160,6 @@ ivi_layout_init_with_compositor(struct weston_compositor *ec)
 	weston_plugin_api_register(ec, IVI_LAYOUT_API_NAME_FOR_WMS,
 				   &ivi_layout_interface_for_wms,
 				   sizeof(struct ivi_layout_interface_for_wms));
-}
-
-static void
-wl_list_insert_before(struct wl_list *list, struct wl_list *elm)
-{
-	elm->next = list;
-	elm->prev = list->prev;
-	list->prev = elm;
-	elm->prev->next = elm;
-}
-
-static struct weston_output*
-create_virtual_screen(int32_t x, int32_t y, uint32_t width, uint32_t height)
-{
-	LOG_ENTER();
-	struct ivi_layout *layout = get_instance();
-	struct weston_compositor *ec = layout->compositor;
-	struct ivi_layout_screen *iviscrn = NULL;
-	struct weston_output *output = NULL;
-	uint32_t id = 0;
-
-	wl_list_for_each(output, &ec->output_list, link) {
-		if (id < output->id)
-			id = output->id;
-		LOG_ERROR("virtual output id:%d\n", id);
-	}
-	id++;
-
-	output = calloc(1, sizeof *output);
-	if (output == NULL) {
-		LOG_ERROR("fails to allocate memory\n");
-		return NULL;
-	}
-
-	output->id = id;
-	output->name = VIRTUAL_OUTPUT_NAME;
-	output->x = x;
-	output->y = y;
-	output->width = width;
-	output->height = height;
-
-	iviscrn = calloc(1, sizeof *iviscrn);
-	if (iviscrn == NULL) {
-		LOG_ERROR("fails to allocate memory\n");
-		free(output);
-		return NULL;
-	}
-
-	iviscrn->layout = layout;
-	iviscrn->output = output;
-
-	wl_list_init(&iviscrn->pending.layer_list);
-	wl_list_init(&iviscrn->order.layer_list);
-	wl_list_insert_before(&layout->screen_list, &iviscrn->link);
-
-	LOG_EXIT();
-	return output;
-}
-
-static int32_t
-destroy_virtual_screen(uint32_t screen_id)
-{
-	LOG_ENTER();
-	struct ivi_layout_screen *iviscrn = get_screen_from_id(screen_id);
-	struct ivi_layout_layer  *ivilayer = NULL;
-	struct ivi_layout_layer  *next = NULL;
-
-	if (!iviscrn) {
-		LOG_ERROR("get_screen_from_id return null: invalid argument\n");
-		return IVI_FAILED;
-	}
-	wl_list_for_each_safe(ivilayer, next,
-					&iviscrn->pending.layer_list, pending.link) {
-		ivi_layout_layer_destroy(ivilayer);
-	}
-
-	wl_list_remove(&iviscrn->link);
-	free(iviscrn->output);
-	free(iviscrn);
-
-	LOG_EXIT();
-	return IVI_SUCCEEDED;
 }
 
 static int32_t
@@ -2411,6 +2299,10 @@ static struct ivi_layout_interface ivi_layout_interface = {
 	 */
 	.surface_get_size		= ivi_layout_surface_get_size,
 	.surface_dump			= ivi_layout_surface_dump,
+
+#ifdef USE_DUMMY_SCREEN
+	.get_dummy_output = get_dummy_output,
+#endif /* USE_DUMMY_SCREEN */
 };
 
 int32_t
@@ -2425,9 +2317,6 @@ ivi_layout_surface_change_top(struct ivi_layout_surface *ivisurf)
 	}
 
 	wl_list_for_each(layout_view, &ivisurf->view_list, surf_link) {
-		if (!ivi_view_is_mapped(layout_view)) {
-			continue;
-		}
 		layout_layer = layout_view->on_layer;
 		if (!layout_layer) {
 			continue;
@@ -2457,7 +2346,9 @@ static struct ivi_layout_interface_for_wms ivi_layout_interface_for_wms = {
 	.layer_remove_surface	= ivi_layout_layer_remove_surface,
 	.surface_change_top = ivi_layout_surface_change_top,
 	.layer_set_visibility = ivi_layout_layer_set_visibility,
-	.layer_set_source_rectangle = ivi_layout_layer_set_source_rectangle,
+#ifdef USE_DUMMY_SCREEN
+	.get_dummy_output = get_dummy_output,
+#endif /* USE_DUMMY_SCREEN */
 	.screen_clone = screen_clone,
 	.screen_clear = screen_clear,
 	.surface_set_force_refresh = ivi_layout_surface_set_force_refresh,
@@ -2465,6 +2356,4 @@ static struct ivi_layout_interface_for_wms ivi_layout_interface_for_wms = {
 	.get_layers_on_screen	= ivi_layout_get_layers_on_screen,
 	.get_id_of_layer	= ivi_layout_get_id_of_layer,
 	.get_id_of_surface	= ivi_layout_get_id_of_surface,
-	.create_virtual_screen = create_virtual_screen,
-	.destroy_virtual_screen = destroy_virtual_screen,
 };

@@ -30,13 +30,6 @@
 
 #include <libudev.h>
 
-#include "hdi_backend.h"
-#include "hdi_head.h"
-#include "hdi_output.h"
-#include "hdi_renderer.h"
-
-#include "mix_renderer.h"
-
 // C header adapter
 extern "C" {
 #include "libweston/backend-hdi.h"
@@ -47,6 +40,11 @@ extern "C" {
 #include "libweston/windowed-output-api.h"
 #include "shared/helpers.h"
 }
+
+#include "hdi_backend.h"
+#include "hdi_head.h"
+#include "hdi_output.h"
+#include "hdi_renderer.h"
 
 #include "libweston/trace.h"
 DEFINE_LOG_LABEL("HdiBackend");
@@ -60,7 +58,7 @@ to_hdi_backend(struct weston_compositor *base)
 static void
 hdi_backend_plug_event(uint32_t device_id, bool connected, void *data)
 {
-    LOG_SCOPE();
+    LOG_ENTER();
     struct hdi_backend *b = (struct hdi_backend *)data;
 
     if (connected == true) {
@@ -75,30 +73,13 @@ hdi_backend_plug_event(uint32_t device_id, bool connected, void *data)
             }
         }
     }
-}
-
-static int
-hdi_gl_renderer_init(struct hdi_backend *b)
-{
-   uint32_t format[3] = { b->gbm_format, 0, 0, };
-   const struct gl_renderer_display_options options = {
-       .egl_platform = EGL_PLATFORM_GBM_KHR,
-       .egl_surface_type = EGL_PBUFFER_BIT,
-       .drm_formats = format,
-       .drm_formats_count = 2,
-   };
-
-   b->glri = (struct gl_renderer_interface *)weston_load_module("gl-renderer.so", "gl_renderer_interface");
-   if (!b->glri)
-       return -1;
-
-   return b->glri->display_create(b->compositor, &options);
+    LOG_EXIT();
 }
 
 static void
 hdi_backend_destroy(struct weston_compositor *ec)
 {
-    LOG_SCOPE();
+    LOG_ENTER();
     struct hdi_backend *b = to_hdi_backend(ec);
     struct weston_head *base, *next;
 
@@ -118,16 +99,17 @@ hdi_backend_destroy(struct weston_compositor *ec)
     }
 
     free(b);
+    LOG_EXIT();
 }
 
 static struct hdi_pending_state *
 hdi_backend_create_pending_state(struct hdi_backend *b)
 {
-    struct hdi_pending_state *hps = (struct hdi_pending_state *)zalloc(sizeof *hps);
+    struct hdi_pending_state *hps =
+        (struct hdi_pending_state *)zalloc(sizeof *hps);
     if (hps == NULL) {
         return NULL;
     }
-
     hps->backend = b;
     return hps;
 }
@@ -151,12 +133,13 @@ static int
 hdi_backend_repaint_flush(struct weston_compositor *compositor,
                           void *repaint_data)
 {
-    LOG_SCOPE();
+    LOG_ENTER();
     struct hdi_backend *b = to_hdi_backend(compositor);
     struct hdi_pending_state *hps = (struct hdi_pending_state *)repaint_data;
 
     if (hps->framebuffer == NULL) {
         hdi_backend_destroy_pending_state(hps);
+        LOG_EXIT();
         return 0;
     }
 
@@ -208,6 +191,7 @@ hdi_backend_repaint_flush(struct weston_compositor *compositor,
     //     }
     // }
     hdi_backend_destroy_pending_state(hps);
+    LOG_EXIT();
     return 0;
 }
 
@@ -215,13 +199,14 @@ struct hdi_backend *
 hdi_backend_create(struct weston_compositor *compositor,
             struct weston_hdi_backend_config *config)
 {
-    LOG_SCOPE();
+    LOG_PASS();
     int ret;
 
     // ctor1. alloc memory
     struct hdi_backend *b = (struct hdi_backend *)zalloc(sizeof *b);
     if (b == NULL) {
-        LOG_ERROR("zalloc hdi-backend failed");
+        weston_log("zalloc hdi-backend failed");
+        LOG_EXIT();
         return NULL;
     }
 
@@ -238,42 +223,43 @@ hdi_backend_create(struct weston_compositor *compositor,
     b->base.device_changed = NULL;
     b->base.can_scanout_dmabuf = NULL;
 
+    // 1. attr init
+    if (config->use_hdi) {
+        b->renderer_type = HDI_RENDERER_HDI;
+    }
+
     // init renderer
-    ret = mix_renderer_init(compositor);
-    if (ret < 0) {
-        LOG_ERROR("mix_renderer_init failed");
-        goto err_free;
-    }
-
-    ret = hdi_renderer_init(compositor);
-    if (ret < 0) {
-        LOG_ERROR("hdi_renderer_init failed");
-        goto err_free;
-    }
-
-    ret = hdi_gl_renderer_init(b);
-    if (ret < 0) {
-        LOG_ERROR("hdi_gl_renderer_init failed, gpu render disable.");
+    switch (b->renderer_type) {
+        case HDI_RENDERER_HDI: {
+            ret = hdi_renderer_init(compositor);
+            if (ret < 0) {
+                goto err_free;
+            }
+        } break;
+        default: {
+            assert(0 && "invalid renderer type");
+            goto err_free;
+        } break;
     }
 
     // init hdi device
     ret = DeviceInitialize(&b->device_funcs);
     LOG_CORE("DeviceInitialize return %d", ret);
     if (ret != DISPLAY_SUCCESS || b->device_funcs == NULL) {
-        LOG_ERROR("DeviceInitialize failed");
+        weston_log("DeviceInitialize failed");
         goto err_free;
     }
 
     ret = LayerInitialize(&b->layer_funcs);
     LOG_CORE("LayerInitialize return %d", ret);
     if (ret != DISPLAY_SUCCESS || b->layer_funcs == NULL) {
-        LOG_ERROR("LayerInitialize failed");
+        weston_log("LayerInitialize failed");
         goto err_device_init;
     }
 
     b->display_gralloc = ::OHOS::HDI::Display::V1_0::IDisplayGralloc::Get();
     if (ret != DISPLAY_SUCCESS || b->display_gralloc == NULL) {
-        LOG_ERROR("IDisplayGralloc::Get failed");
+        weston_log("IDisplayGralloc::Get failed");
         goto err_layer_init;
     }
 
@@ -282,21 +268,21 @@ hdi_backend_create(struct weston_compositor *compositor,
         compositor->launcher = weston_launcher_connect(compositor, 1,
             seat_id, true);
         if (compositor->launcher == NULL) {
-            LOG_ERROR("fatal: drm backend should be run using "
-                      "weston-launch binary, or your system should "
-                      "provide the logind D-Bus API.");
+            weston_log("fatal: drm backend should be run using "
+                       "weston-launch binary, or your system should "
+                       "provide the logind D-Bus API.");
             break;
         }
 
         b->udev = udev_new();
         if (b->udev == NULL) {
-            LOG_ERROR("failed to initialize udev context");
+            weston_log("failed to initialize udev context");
             break;
         }
 
         if (udev_input_init(&b->input, compositor,
                 b->udev, "seat0", config->configure_device) < 0) {
-            LOG_ERROR("failed to create input devices");
+            weston_log("failed to create input devices");
             break;
         }
 
@@ -307,9 +293,9 @@ hdi_backend_create(struct weston_compositor *compositor,
     LOG_CORE("DeviceFuncs.RegHotPlugCallback return %d", ret);
 
     // init linux_dmabuf
-    if (compositor->hdi_renderer->import_dmabuf) {
+    if (compositor->renderer->import_dmabuf) {
         if (linux_dmabuf_setup(compositor) < 0) {
-            LOG_ERROR("Error: dmabuf protocol setup failed.\n");
+            weston_log("Error: dmabuf protocol setup failed.\n");
             goto err_gralloc_init;
         }
     }
@@ -320,7 +306,7 @@ hdi_backend_create(struct weston_compositor *compositor,
     };
     if (weston_plugin_api_register(compositor,
         WESTON_HDI_OUTPUT_API_NAME, &api, sizeof(api)) < 0) {
-        LOG_ERROR("Failed to register hdi output API.\n");
+        weston_log("Failed to register hdi output API.\n");
         goto err_gralloc_init;
     }
 
