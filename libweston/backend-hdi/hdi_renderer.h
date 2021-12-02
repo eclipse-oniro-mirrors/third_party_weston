@@ -30,11 +30,8 @@
 extern "C" {
 #endif
 
-#include "buffer_handle.h"
-
 struct weston_compositor;
 struct weston_output;
-struct hdi_surface_state;
 
 int
 hdi_renderer_init(struct weston_compositor *compositor);
@@ -49,9 +46,6 @@ hdi_renderer_output_create(struct weston_output *output,
 
 void
 hdi_renderer_output_destroy(struct weston_output *output);
-
-void
-hdi_renderer_output_set_gpu_buffer(struct weston_output *output, BufferHandle *buffer);
 
 #ifdef __cplusplus
 }

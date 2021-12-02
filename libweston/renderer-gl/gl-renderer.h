@@ -22,8 +22,6 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef GL_RENDERER_H
-#define GL_RENDERER_H
 
 #include "config.h"
 
@@ -34,15 +32,11 @@
 #include "libweston-internal.h"
 #include <hilog/log.h> // OHOS hilog
 
-#include "buffer_handle.h"
-
 // OHOS hilog
 #ifndef weston_log
 #define weston_log(fmt, ...) (HILOG_INFO(LOG_CORE, fmt, ##__VA_ARGS__))
 #define weston_log_continue(fmt, ...) (HILOG_DEBUG(LOG_CORE, fmt, ##__VA_ARGS__))
 #endif
-
-#define GL_RENDERER_FRMAEBUFFER_SIZE 2
 
 #ifdef ENABLE_EGL
 
@@ -109,10 +103,6 @@ struct gl_renderer_pbuffer_options {
 	const uint32_t *drm_formats;
 	/** The \c drm_formats array length */
 	unsigned drm_formats_count;
-};
-
-struct gl_renderer_fbo_options {
-	BufferHandle *handle[GL_RENDERER_FRMAEBUFFER_SIZE];
 };
 
 struct gl_renderer_interface {
@@ -195,9 +185,6 @@ struct gl_renderer_interface {
 	int (*output_pbuffer_create)(struct weston_output *output,
 				     const struct gl_renderer_pbuffer_options *options);
 
-	int (*output_fbo_create)(struct weston_output *output,
-				     const struct gl_renderer_fbo_options *options);
-
 	void (*output_destroy)(struct weston_output *output);
 
 	/* Sets the output border.
@@ -239,5 +226,3 @@ struct gl_renderer_interface {
 	 */
 	int (*create_fence_fd)(struct weston_output *output);
 };
-
-#endif
