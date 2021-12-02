@@ -23,38 +23,18 @@
  * SOFTWARE.
  */
 
-#ifndef LIBWESTON_BACKEND_HDI_HDI_RENDERER_H
-#define LIBWESTON_BACKEND_HDI_HDI_RENDERER_H
+#ifndef LIBWESTON_RENDERER_MIX_MIX_RENDERER_H
+#define LIBWESTON_RENDERER_MIX_MIX_RENDERER_H
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#include "buffer_handle.h"
-
 struct weston_compositor;
-struct weston_output;
-struct hdi_surface_state;
-
-int
-hdi_renderer_init(struct weston_compositor *compositor);
-
-struct hdi_renderer_output_options {
-    int unused;
-};
-
-int
-hdi_renderer_output_create(struct weston_output *output,
-    const struct hdi_renderer_output_options *options);
-
-void
-hdi_renderer_output_destroy(struct weston_output *output);
-
-void
-hdi_renderer_output_set_gpu_buffer(struct weston_output *output, BufferHandle *buffer);
+int mix_renderer_init(struct weston_compositor *compositor);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // LIBWESTON_BACKEND_HDI_HDI_RENDERER_H
+#endif // LIBWESTON_RENDERER_MIX_MIX_RENDERER_H

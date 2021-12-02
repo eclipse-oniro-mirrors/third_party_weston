@@ -26,9 +26,17 @@
 #include "hdi_renderer.h"
 
 #include <assert.h>
+#include <chrono>
 #include <cinttypes>
+#include <memory>
+#include <string.h>
 #include <sstream>
 #include <sys/time.h>
+#include <vector>
+
+#include "hdi_backend.h"
+#include "hdi_head.h"
+#include "hdi_output.h"
 
 // C header adapter
 extern "C" {
@@ -38,31 +46,22 @@ extern "C" {
 #include "shared/helpers.h"
 }
 
-#include "hdi_backend.h"
-#include "hdi_head.h"
-
 #include "libweston/trace.h"
-DEFINE_LOG_LABEL("HdiRenderr");
+DEFINE_LOG_LABEL("HdiRenderer");
 
 struct hdi_renderer {
     struct weston_renderer base;
 };
 
-struct hdi_output_state {
-    int a;
-};
-
-struct hdi_surface_state {
+struct hdi_surface_state_part {
     // basic attribute
     struct weston_compositor *compositor;
     struct weston_surface *surface;
-    struct wl_listener surface_destroy_listener;
     struct weston_buffer_reference buffer_ref;
 
     // hdi attribute
     uint32_t device_id;
     uint32_t layer_id;
-    int32_t create_layer_retval;
     LayerInfo layer_info;
     IRect dst_rect;
     IRect src_rect;
@@ -73,8 +72,72 @@ struct hdi_surface_state {
     BufferHandle *bh;
 };
 
+struct hdi_surface_state {
+    struct wl_listener surface_destroy_listener;
+    std::shared_ptr<struct hdi_surface_state_part> part;
+};
+
+struct hdi_output_state {
+    std::vector<std::weak_ptr<struct hdi_surface_state_part>> layers;
+    uint32_t gpu_layer_id;
+};
+
+static struct hdi_output_state *
+get_output_state(struct weston_output *output)
+{
+    return reinterpret_cast<struct hdi_output_state *>(output->hdi_renderer_state);
+}
+
+static std::shared_ptr<struct hdi_surface_state_part>
+get_surface_state(struct weston_surface *surface)
+{
+    if (surface->hdi_renderer_state == nullptr) {
+        return nullptr;
+    }
+    return reinterpret_cast<struct hdi_surface_state *>(surface->hdi_renderer_state)->part;
+}
+
+static void
+hdi_renderer_layer_operation(struct hdi_backend *b, int32_t device_id, int32_t layer_id,
+                             BufferHandle *buffer, int32_t fence,
+                             LayerAlpha *alpha,
+                             IRect *dst,
+                             IRect *src,
+                             uint32_t zorder,
+                             BlendType blend_type,
+                             CompositionType comp_type,
+                             TransformType rotate_type)
+{
+    LOG_CORE("LayerOperation device_id=%d layer_id=%d", device_id, layer_id);
+    if (buffer != nullptr) {
+        auto ret = b->layer_funcs->SetLayerBuffer(device_id, layer_id, buffer, fence);
+        LOG_CORE("LayerFuncs.SetLayerBuffer return %d", ret);
+    }
+
+    auto ret = b->layer_funcs->SetLayerAlpha(device_id, layer_id, alpha);
+    LOG_CORE("[ret=%d] LayerFuncs.SetLayerAlpha", ret);
+
+    ret = b->layer_funcs->SetLayerSize(device_id, layer_id, dst);
+    LOG_CORE("[ret=%d] LayerFuncs.SetLayerSize (%d, %d) %dx%d", ret, dst->x, dst->y, dst->w, dst->h);
+
+    ret = b->layer_funcs->SetLayerCrop(device_id, layer_id, src);
+    LOG_CORE("[ret=%d] LayerFuncs.SetLayerCrop (%d, %d) %dx%d", ret, src->x, src->y, src->w, src->h);
+
+    ret = b->layer_funcs->SetLayerZorder(device_id, layer_id, zorder);
+    LOG_CORE("[ret=%d] LayerFuncs.SetLayerZorder %d", ret, zorder);
+
+    ret = b->layer_funcs->SetLayerBlendType(device_id, layer_id, blend_type);
+    LOG_CORE("[ret=%d] LayerFuncs.SetLayerBlendType %d", ret, blend_type);
+
+    ret = b->layer_funcs->SetLayerCompositionType(device_id, layer_id, comp_type);
+    LOG_CORE("[ret=%d] LayerFuncs.SetLayerCompositionType %d", ret, comp_type);
+
+    ret = b->layer_funcs->SetTransformMode(device_id, layer_id, rotate_type);
+    LOG_CORE("[ret=%d] LayerFuncs.SetTransformMode %d", ret, rotate_type);
+}
+
 static BufferHandle *
-hdi_renderer_surface_state_mmap(struct hdi_surface_state *hss)
+hdi_renderer_surface_state_mmap(std::shared_ptr<struct hdi_surface_state_part> hss)
 {
     if (hss == NULL || hss->surface == NULL) {
         return NULL;
@@ -98,13 +161,13 @@ hdi_renderer_surface_state_mmap(struct hdi_surface_state *hss)
     if (bh->virAddr == NULL) {
         struct hdi_backend *b = to_hdi_backend(hss->surface->compositor);
         void *ptr = b->display_gralloc->Mmap(*bh);
-        LOG_CORE("GrallocFuncs.Mmap %d return %p", bh->fd, ptr);
+        LOG_CORE("GrallocFuncs.Mmap fd=%d return ptr=%p", bh->fd, ptr);
     }
     return bh;
 }
 
 static void
-hdi_renderer_surface_state_unmap(struct hdi_surface_state *hss)
+hdi_renderer_surface_state_unmap(std::shared_ptr<struct hdi_surface_state_part> hss)
 {
     if (hss == NULL || hss->surface == NULL) {
         return;
@@ -127,25 +190,11 @@ hdi_renderer_surface_state_unmap(struct hdi_surface_state *hss)
 
     if (bh->virAddr != NULL) {
         struct hdi_backend *b = to_hdi_backend(hss->compositor);
-        int ret = b->display_gralloc->Unmap(*bh);
-        LOG_CORE("GrallocFuncs.Mmap return %d", ret);
+        auto fd = bh->fd;
+        auto ptr = bh->virAddr;
+        auto ret = b->display_gralloc->Unmap(*bh);
+        LOG_CORE("GrallocFuncs.Unmap fd=%d ptr=%p return %d", fd, ptr, ret);
     }
-}
-
-static void
-hdi_renderer_surface_state_destroy(struct hdi_surface_state *hss)
-{
-    LOG_PASS();
-    struct hdi_backend *b = to_hdi_backend(hss->compositor);
-    if (hss->create_layer_retval == DISPLAY_SUCCESS) {
-        int ret = b->layer_funcs->CloseLayer(hss->device_id, hss->layer_id);
-        LOG_CORE("LayerFuncs.CloseLayer return %d", ret);
-    }
-
-    hdi_renderer_surface_state_unmap(hss);
-    weston_buffer_reference(&hss->buffer_ref, NULL);
-
-    free(hss);
 }
 
 static void
@@ -153,10 +202,21 @@ hdi_renderer_surface_state_on_destroy(struct wl_listener *listener,
                                       void *data)
 {
     LOG_PASS();
-    struct hdi_surface_state *hss = container_of(listener,
-                                                 struct hdi_surface_state,
-                                                 surface_destroy_listener);
-    hdi_renderer_surface_state_destroy(hss);
+    auto phss = container_of(listener,
+                             struct hdi_surface_state,
+                             surface_destroy_listener);
+    auto hss = phss->part;
+    struct hdi_backend *b = to_hdi_backend(hss->compositor);
+    if (hss->layer_id != -1) {
+        int ret = b->layer_funcs->CloseLayer(hss->device_id, hss->layer_id);
+        LOG_CORE("LayerFuncs.CloseLayer id=%d return %d", hss->layer_id, ret);
+        hss->layer_id = -1;
+    }
+
+    hdi_renderer_surface_state_unmap(hss);
+    weston_buffer_reference(&hss->buffer_ref, NULL);
+
+    delete phss;
 }
 
 static int
@@ -164,24 +224,27 @@ hdi_renderer_create_surface_state(struct weston_surface *surface)
 {
     LOG_PASS();
     // life time
-    struct hdi_surface_state *hss = (struct hdi_surface_state *)zalloc(sizeof *hss);
-    if (hss == NULL) {
+    auto phss = new struct hdi_surface_state();
+    if (phss == NULL) {
         return -1;
     }
 
-    surface->renderer_state = hss;
+    surface->hdi_renderer_state = phss;
+    phss->part = std::make_shared<struct hdi_surface_state_part>();
+
+    auto hss = get_surface_state(surface);
     hss->surface = surface;
     hss->compositor = surface->compositor;
 
-    hss->surface_destroy_listener.notify =
+    phss->surface_destroy_listener.notify =
         hdi_renderer_surface_state_on_destroy;
     wl_signal_add(&surface->destroy_signal,
-        &hss->surface_destroy_listener);
+        &phss->surface_destroy_listener);
 
     struct hdi_backend *b = to_hdi_backend(surface->compositor);
 
     // init
-    hss->create_layer_retval = -1;
+    hss->layer_id = -1;
     return 0;
 }
 
@@ -189,17 +252,17 @@ static void
 hdi_renderer_attach(struct weston_surface *surface,
                     struct weston_buffer *buffer)
 {
-    LOG_PASS();
-    assert(surface && "hdi_renderer_attach surface is NULL");
-    assert(buffer && "hdi_renderer_attach buffer is NULL");
-    if (surface->renderer_state == NULL) {
+    LOG_SCOPE();
+    assert(surface && !"hdi_renderer_attach surface is NULL");
+    assert(buffer && !"hdi_renderer_attach buffer is NULL");
+    if (surface->hdi_renderer_state == NULL) {
         hdi_renderer_create_surface_state(surface);
     }
 
-    struct hdi_surface_state *hss = (struct hdi_surface_state *)surface->renderer_state;
+    auto hss = get_surface_state(surface);
     struct linux_dmabuf_buffer *dmabuf = linux_dmabuf_buffer_get(buffer->resource);
     if (dmabuf != NULL) {
-        weston_log("hdi_renderer_attach dmabuf");
+        LOG_INFO("dmabuf");
         hdi_renderer_surface_state_unmap(hss);
         weston_buffer_reference(&hss->buffer_ref, buffer);
         buffer->width = dmabuf->attributes.width;
@@ -209,7 +272,7 @@ hdi_renderer_attach(struct weston_surface *surface,
 
     struct wl_shm_buffer *shmbuf = wl_shm_buffer_get(buffer->resource);
     if (shmbuf != NULL) {
-        weston_log("hdi_renderer_attach shmbuf");
+        LOG_INFO("shmbuf");
         hdi_renderer_surface_state_unmap(hss);
         weston_buffer_reference(&hss->buffer_ref, buffer);
         buffer->width = wl_shm_buffer_get_width(shmbuf);
@@ -217,15 +280,15 @@ hdi_renderer_attach(struct weston_surface *surface,
         return;
     }
 
-    weston_log("hdi_renderer_attach cannot attach buffer");
+    LOG_ERROR("cannot attach buffer");
 }
 
 static void
 hdi_renderer_destroy(struct weston_compositor *compositor)
 {
     LOG_PASS();
-    struct hdi_renderer *renderer = (struct hdi_renderer *)compositor->renderer;
-    compositor->renderer = NULL;
+    struct hdi_renderer *renderer = (struct hdi_renderer *)compositor->hdi_renderer;
+    compositor->hdi_renderer = NULL;
     free(renderer);
 }
 
@@ -265,6 +328,19 @@ hdi_renderer_read_pixels(struct weston_output *output,
             uint32_t x, uint32_t y,
             uint32_t width, uint32_t height)
 {
+    BufferHandle *bh = hdi_output_get_framebuffer(output);
+    int32_t bpp = bh->stride / bh->width;
+    int32_t stride = bh->stride;
+
+    if (x == 0 && width == bh->width) {
+        memcpy(pixels, (uint8_t *)bh->virAddr + y * stride, height * stride);
+        return 0;
+    }
+
+    for (int32_t j = y; j < height; j++) {
+        memcpy((uint8_t *)pixels + j * stride + x * bpp,
+               (uint8_t *)bh->virAddr + j * stride + x * bpp, width * bpp);
+    }
     return 0;
 }
 
@@ -365,7 +441,7 @@ hdi_renderer_repaint_output_calc_region(pixman_region32_t *global_repaint_region
         LOG_INFO("transform disabled");
     }
     weston_matrix_multiply(&matrix, &view->surface->surface_to_buffer_matrix);
-    struct hdi_surface_state *hss = (struct hdi_surface_state *)view->surface->renderer_state;
+    auto hss = get_surface_state(view->surface);
     if (matrix.d[0] == matrix.d[5] && matrix.d[0] == 0) {
         if (matrix.d[4] > 0 && matrix.d[1] > 0) {
             LOG_INFO("Transform: 90 mirror");
@@ -417,7 +493,7 @@ hdi_renderer_repaint_output_calc_region(pixman_region32_t *global_repaint_region
 }
 
 static void
-hdi_renderer_surface_state_calc_rect(struct hdi_surface_state *hss,
+hdi_renderer_surface_state_calc_rect(std::shared_ptr<struct hdi_surface_state_part> hss,
     pixman_region32_t *output_damage, struct weston_output *output, struct weston_view *view)
 {
     pixman_region32_t global_repaint_region;
@@ -444,11 +520,11 @@ hdi_renderer_surface_state_calc_rect(struct hdi_surface_state *hss,
 }
 
 static int
-hdi_renderer_surface_state_create_layer(struct hdi_surface_state *hss,
+hdi_renderer_surface_state_create_layer(std::shared_ptr<struct hdi_surface_state_part> hss,
     struct hdi_backend *b, struct weston_output *output)
 {
     struct weston_mode *mode = output->current_mode;
-    if (hss->create_layer_retval != DISPLAY_SUCCESS) {
+    if (hss->layer_id == -1) {
         hss->layer_info.width = mode->width;
         hss->layer_info.height = mode->height;
         if (hss->surface->type == WL_SURFACE_TYPE_VIDEO) {
@@ -466,10 +542,9 @@ hdi_renderer_surface_state_create_layer(struct hdi_surface_state *hss,
         int ret = b->layer_funcs->CreateLayer(hss->device_id,
                                               &hss->layer_info, &hss->layer_id);
         LOG_CORE("LayerFuncs.CreateLayer return %d", ret);
-        hss->create_layer_retval = ret;
         if (ret != DISPLAY_SUCCESS) {
-            weston_log("layer create failed");
             LOG_ERROR("create layer failed");
+            hss->layer_id = -1;
             return -1;
         }
         LOG_INFO("create layer: %d", hss->layer_id);
@@ -479,57 +554,27 @@ hdi_renderer_surface_state_create_layer(struct hdi_surface_state *hss,
     return 0;
 }
 
-static void dump_to_file(BufferHandle *bh)
-{
-    if (bh == NULL) {
-        return;
-    }
-
-    if (access("/data/hdi_dump", F_OK) == -1) {
-        return;
-    }
-
-    struct timeval now;
-    gettimeofday(&now, nullptr);
-    constexpr int secToUsec = 1000 * 1000;
-    int64_t nowVal = (int64_t)now.tv_sec * secToUsec + (int64_t)now.tv_usec;
-
-    std::stringstream ss;
-    ss << "/data/hdi-dumpimage-" << nowVal << ".raw";
-    weston_log("dumpimage: %{public}s", ss.str().c_str());
-    weston_log("fd: %{public}d", bh->fd);
-    weston_log("width: %{public}d", bh->width);
-    weston_log("height: %{public}d", bh->height);
-    weston_log("size: %{public}d", bh->size);
-    weston_log("format: %{public}d", bh->format);
-    weston_log("usage: %{public}" PRIu64, bh->usage);
-    weston_log("virAddr: %{public}p", bh->virAddr);
-    weston_log("phyAddr: %{public}" PRIu64, bh->phyAddr);
-
-    auto fp = fopen(ss.str().c_str(), "a+");
-    if (fp == nullptr) {
-        return;
-    }
-
-    fwrite(bh->virAddr, bh->size, 1, fp);
-    fclose(fp);
-}
-
 static void
 hdi_renderer_repaint_output(struct weston_output *output,
                             pixman_region32_t *output_damage)
 {
-    LOG_ENTER();
+    LOG_SCOPE();
     struct weston_compositor *compositor = output->compositor;
     struct hdi_backend *b = to_hdi_backend(compositor);
     struct weston_head *whead = weston_output_get_first_head(output);
     uint32_t device_id = hdi_head_get_device_id(whead);
+    auto ho = get_output_state(output);
+    auto old_layers = ho->layers;
+    ho->layers.clear();
 
-    int32_t zorder = 1;
-    BlendType blend_type = BLEND_SRC;
+    int32_t zorder = 2;
     struct weston_view *view;
     wl_list_for_each_reverse(view, &compositor->view_list, link) {
-        struct hdi_surface_state *hss = (struct hdi_surface_state *)view->surface->renderer_state;
+        if (view->renderer_type != WESTON_RENDERER_TYPE_HDI) {
+            continue;
+        }
+
+        auto hss = get_surface_state(view->surface);
         if (hss == NULL) {
             continue;
         }
@@ -538,37 +583,72 @@ hdi_renderer_repaint_output(struct weston_output *output,
             continue;
         }
 
+        ho->layers.push_back(hss);
         hdi_renderer_surface_state_calc_rect(hss, output_damage, output, view);
         hss->zorder = zorder++;
-        hss->blend_type = blend_type;
-        blend_type = BLEND_SRCOVER;
+        hss->blend_type = BLEND_SRCOVER;
         if (hss->surface->type == WL_SURFACE_TYPE_VIDEO) {
             hss->comp_type = COMPOSITION_VIDEO;
+            hss->zorder += 100;
         } else {
             hss->comp_type = COMPOSITION_DEVICE;
             BufferHandle *bh = hdi_renderer_surface_state_mmap(hss);
-            dump_to_file(bh);
-            int ret = b->layer_funcs->SetLayerBuffer(device_id, hss->layer_id, bh, -1);
-            LOG_CORE("LayerFuncs.SetLayerBuffer return %d", ret);
+        }
+    }
+
+    // close not composite layer
+    for (auto &whss : old_layers) {
+        auto shss = whss.lock();
+        if (shss == nullptr) {
+            continue;
+        }
+
+        bool occur = false;
+        for (const auto &wlayer : ho->layers) {
+            if (shss == wlayer.lock()) {
+                occur = true;
+                break;
+            }
+        }
+
+        if (!occur) {
+            int ret = b->layer_funcs->CloseLayer(shss->device_id, shss->layer_id);
+            LOG_CORE("LayerFuncs.CloseLayer %d return %d", shss->layer_id, ret);
+            shss->layer_id = -1;
+        }
+    }
+
+    wl_list_for_each_reverse(view, &compositor->view_list, link) {
+        if (view->renderer_type != WESTON_RENDERER_TYPE_HDI) {
+            continue;
+        }
+
+        LOG_INFO("LayerOperation: %p", view);
+        auto hss = get_surface_state(view->surface);
+        if (hss == NULL) {
+            continue;
+        }
+
+        if (hdi_renderer_surface_state_create_layer(hss, b, output) != 0) {
+            continue;
+        }
+
+        BufferHandle *bh = nullptr;
+        if (hss->surface->type != WL_SURFACE_TYPE_VIDEO) {
+            bh = hdi_renderer_surface_state_mmap(hss);
         }
 
         LayerAlpha alpha = { .enPixelAlpha = true };
-        int ret = b->layer_funcs->SetLayerAlpha(device_id, hss->layer_id, &alpha);
-        LOG_CORE("LayerFuncs.SetLayerAlpha return %d", ret);
-        ret = b->layer_funcs->SetLayerSize(device_id, hss->layer_id, &hss->dst_rect);
-        LOG_CORE("LayerFuncs.SetLayerSize return %d", ret);
-        ret = b->layer_funcs->SetLayerCrop(device_id, hss->layer_id, &hss->src_rect);
-        LOG_CORE("LayerFuncs.SetLayerCrop return %d", ret);
-        ret = b->layer_funcs->SetLayerZorder(device_id, hss->layer_id, hss->zorder);
-        LOG_CORE("LayerFuncs.SetLayerZorder return %d", ret);
-        ret = b->layer_funcs->SetLayerBlendType(device_id, hss->layer_id, hss->blend_type);
-        LOG_CORE("LayerFuncs.SetLayerBlendType return %d", ret);
-        ret = b->layer_funcs->SetLayerCompositionType(device_id, hss->layer_id, hss->comp_type);
-        LOG_CORE("LayerFuncs.SetLayerCompositionType return %d", ret);
-        ret = b->layer_funcs->SetTransformMode(device_id, hss->layer_id, hss->rotate_type);
-        LOG_CORE("LayerFuncs.SetTransformMode return %d", ret);
+        hdi_renderer_layer_operation(b, device_id, hss->layer_id,
+                                     bh, -1,
+                                     &alpha,
+                                     &hss->dst_rect,
+                                     &hss->src_rect,
+                                     hss->zorder,
+                                     hss->blend_type,
+                                     hss->comp_type,
+                                     hss->rotate_type);
     }
-    LOG_EXIT();
 }
 
 static void
@@ -576,6 +656,52 @@ hdi_renderer_surface_set_color(struct weston_surface *surface,
                                float red, float green,
                                float blue, float alpha)
 {
+}
+
+static void
+hdi_renderer_surface_get_content_size(struct weston_surface *surface,
+                               int *width, int *height)
+{
+    auto hss = get_surface_state(surface);
+    if (hss == NULL) {
+        LOG_ERROR("hdi_renderer_state is null\n");
+        *width = 0;
+        *height = 0;
+        return;
+    }
+    BufferHandle *bh = hdi_renderer_surface_state_mmap(hss);
+    if (bh == NULL) {
+        LOG_ERROR("hdi_renderer_surface_state_mmap error\n");
+        *width = 0;
+        *height = 0;
+        return;
+    }
+
+    *width = bh->width;
+    *height = bh->height;
+    return;
+}
+
+static int
+hdi_renderer_surface_copy_content(struct weston_surface *surface,
+                                  void *target, size_t size,
+                                  int src_x, int src_y, int width, int height)
+{
+    auto hss = get_surface_state(surface);
+    if (hss == NULL) {
+        LOG_ERROR("hdi_renderer_state is null\n");
+        return -1;
+    }
+
+
+    BufferHandle *bh = hdi_renderer_surface_state_mmap(hss);
+    if (bh == NULL) {
+        LOG_ERROR("hdi_renderer_surface_state_mmap error\n");
+        return -1;
+    }
+
+    memcpy(target, bh->virAddr, size);
+    return 0;
 }
 
 int
@@ -593,10 +719,10 @@ hdi_renderer_init(struct weston_compositor *compositor)
     renderer->base.read_pixels = hdi_renderer_read_pixels;
     renderer->base.repaint_output = hdi_renderer_repaint_output;
     renderer->base.surface_set_color = hdi_renderer_surface_set_color;
-    renderer->base.surface_copy_content = NULL;
-    renderer->base.surface_get_content_size = NULL;
+    renderer->base.surface_copy_content = hdi_renderer_surface_copy_content;
+    renderer->base.surface_get_content_size = hdi_renderer_surface_get_content_size;
 
-    compositor->renderer = &renderer->base;
+    compositor->hdi_renderer = &renderer->base;
     return 0;
 }
 
@@ -604,17 +730,76 @@ int
 hdi_renderer_output_create(struct weston_output *output,
     const struct hdi_renderer_output_options *options)
 {
-    LOG_PASS();
-    struct hdi_output_state *ho = (struct hdi_output_state *)zalloc(sizeof *ho);
-    output->renderer_state = ho;
+    LOG_SCOPE();
+    auto ho = new struct hdi_output_state();
+    ho->gpu_layer_id = -1;
+    output->hdi_renderer_state = ho;
     return 0;
 }
 
 void
 hdi_renderer_output_destroy(struct weston_output *output)
 {
-    LOG_PASS();
+    LOG_SCOPE();
+    auto ho = (struct hdi_output_state *)output->hdi_renderer_state;
+    if (ho->gpu_layer_id == DISPLAY_SUCCESS) {
+        struct hdi_backend *b = to_hdi_backend(output->compositor);
+        struct weston_head *whead = weston_output_get_first_head(output);
+        uint32_t device_id = hdi_head_get_device_id(whead);
+        int ret = b->layer_funcs->CloseLayer(device_id, ho->gpu_layer_id);
+        LOG_CORE("LayerFuncs.CloseLayer GPU return %d", ret);
+    }
+
+    delete ho;
+}
+
+void
+hdi_renderer_output_set_gpu_buffer(struct weston_output *output, BufferHandle *buffer)
+{
+    LOG_SCOPE();
+    struct hdi_backend *b = to_hdi_backend(output->compositor);
     struct hdi_output_state *ho =
-        (struct hdi_output_state *)output->renderer_state;
-    free(ho);
+        (struct hdi_output_state *)output->hdi_renderer_state;
+    struct weston_head *whead = weston_output_get_first_head(output);
+    int32_t device_id = hdi_head_get_device_id(whead);
+
+    // close last gpu layer
+    if (ho->gpu_layer_id != -1) {
+        int ret = b->layer_funcs->CloseLayer(device_id, ho->gpu_layer_id);
+        LOG_CORE("LayerFuncs.CloseLayer GPU return %d", ret);
+    }
+
+    // create layer
+    LayerInfo layer_info = {
+        .width = buffer->width,
+        .height = buffer->height,
+        .type = LAYER_TYPE_GRAPHIC,
+        .bpp = buffer->stride * 0x8 / buffer->width,
+        .pixFormat = (PixelFormat)buffer->format,
+    };
+    int ret = b->layer_funcs->CreateLayer(device_id, &layer_info, &ho->gpu_layer_id);
+    LOG_CORE("LayerFuncs.CreateLayer GPU return %d", ret);
+    if (ret != DISPLAY_SUCCESS) {
+        LOG_ERROR("create layer failed");
+        ho->gpu_layer_id = -1;
+        return;
+    }
+    LOG_INFO("create layer %d", ho->gpu_layer_id);
+
+    // param
+    LayerAlpha alpha = { .enPixelAlpha = true };
+    int32_t fence = -1;
+    IRect dst_rect = { .w = buffer->width, .h = buffer->height, };
+    IRect src_rect = dst_rect;
+
+    // layer operation
+    hdi_renderer_layer_operation(b, device_id, ho->gpu_layer_id,
+                                 buffer, -1,
+                                 &alpha,
+                                 &dst_rect,
+                                 &src_rect,
+                                 1, // 1 for gpu
+                                 BLEND_SRC,
+                                 COMPOSITION_DEVICE,
+                                 ROTATE_NONE);
 }

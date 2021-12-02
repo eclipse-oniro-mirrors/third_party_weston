@@ -2704,6 +2704,19 @@ weston_compositor_build_view_list(struct weston_compositor *compositor)
 	wl_list_for_each(layer, &compositor->layer_list, link)
 		wl_list_for_each(view, &layer->view_list.link, layer_link.link)
 			surface_free_unused_subsurface_views(view->surface);
+
+	// OHOS mix render
+	uint32_t view_count = wl_list_length(&compositor->view_list);
+	uint32_t index = 0;
+	wl_list_for_each_reverse(view, &compositor->view_list, link) {
+		if (index < view_count / 2 && compositor->gpu_renderer) {
+			view->renderer_type = WESTON_RENDERER_TYPE_GPU;
+		} else {
+			view->renderer_type = WESTON_RENDERER_TYPE_HDI;
+		}
+		index++;
+	}
+
     LOG_EXIT();
 }
 
