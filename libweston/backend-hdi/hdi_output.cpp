@@ -29,6 +29,11 @@
 
 #include <display_type.h>
 
+#include "hdi_backend.h"
+#include "hdi_head.h"
+#include "hdi_output.h"
+#include "hdi_renderer.h"
+
 // C header adapter
 extern "C" {
 #include "libweston/libweston.h"
@@ -36,11 +41,6 @@ extern "C" {
 #include "libweston/pixman-renderer.h"
 #include "shared/helpers.h"
 }
-
-#include "hdi_backend.h"
-#include "hdi_head.h"
-#include "hdi_output.h"
-#include "hdi_renderer.h"
 
 #include "libweston/trace.h"
 DEFINE_LOG_LABEL("HdiOutput");

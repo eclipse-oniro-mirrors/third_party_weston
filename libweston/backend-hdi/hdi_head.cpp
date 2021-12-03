@@ -29,15 +29,15 @@
 
 #include "libweston/soft_vsync.h" // OHOS vsync module
 
+#include "hdi_backend.h"
+#include "hdi_head.h"
+
 // C header adapter
 extern "C" {
 #include "libweston/libweston.h"
 #include "libweston/libweston-internal.h"
 #include "shared/helpers.h"
 }
-
-#include "hdi_backend.h"
-#include "hdi_head.h"
 
 #include "libweston/trace.h"
 DEFINE_LOG_LABEL("HdiHead");
