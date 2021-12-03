@@ -335,15 +335,25 @@ hdi_renderer_read_pixels(struct weston_output *output,
     BufferHandle *bh = hdi_output_get_framebuffer(output);
     int32_t bpp = bh->stride / bh->width;
     int32_t stride = bh->stride;
+    int32_t offset = 0;
 
-    if (x == 0 && width == bh->width) {
-        memcpy(pixels, (uint8_t *)bh->virAddr + y * stride, height * stride);
-        return 0;
-    }
+    if (output->compositor->capabilities & WESTON_CAP_CAPTURE_YFLIP) {
+        for (int32_t j = y + height - 1; j >= (int32_t)y; j--) {
+            memcpy((uint8_t *)pixels + offset,
+                   (uint8_t *)bh->virAddr + j * stride + x * bpp, width * bpp);
+            offset += width * bpp;
+        }
+    } else {
+        if (x == 0 && width == bh->width) {
+            memcpy(pixels, (uint8_t *)bh->virAddr + y * stride, height * stride);
+            return 0;
+        }
 
-    for (int32_t j = y; j < height; j++) {
-        memcpy((uint8_t *)pixels + j * stride + x * bpp,
-               (uint8_t *)bh->virAddr + j * stride + x * bpp, width * bpp);
+        for (int32_t j = y; j < y + height; j++) {
+            memcpy((uint8_t *)pixels + offset,
+                   (uint8_t *)bh->virAddr + j * stride + x * bpp, width * bpp);
+            offset += width * bpp;
+        }
     }
     return 0;
 }
