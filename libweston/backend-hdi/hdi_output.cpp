@@ -210,7 +210,7 @@ hdi_output_repaint(struct weston_output *output_base,
         reinterpret_cast<struct hdi_pending_state *>(repaint_data);
     struct hdi_output *output = to_hdi_output(output_base);
     struct weston_head *h = weston_output_get_first_head(output_base);
-    hps->device_id = hdi_head_get_device_id(h);
+    auto device_id = hdi_head_get_device_id(h);
 
     // prepare framebuffer
     output->current_framebuffer_id = (output->current_framebuffer_id + 1) % 2;
@@ -241,7 +241,7 @@ hdi_output_repaint(struct weston_output *output_base,
         }
     }
 
-    LOG_IMPORTANT("device_id: %d", hps->device_id);
+    LOG_IMPORTANT("device_id: %d", device_id);
     for (const auto &ss : sss) {
         LOG_INFO("%s", ss.str().c_str());
     }
@@ -257,13 +257,13 @@ hdi_output_repaint(struct weston_output *output_base,
     // hdi render
     if (need_hdi_render) {
         output_base->compositor->hdi_renderer->repaint_output(output_base, damage);
-        hps->framebuffer = hdi_framebuffer;
+        hps->framebuffers[device_id] = hdi_framebuffer;
     } else {
-        hps->framebuffer = gl_framebuffer;
+        hps->framebuffers[device_id] = gl_framebuffer;
     }
 
     // ScreenShot
-    output->framebuffer = hps->framebuffer;
+    output->framebuffer = hps->framebuffers[device_id];
     switch (output->framebuffer->format) {
         case PIXEL_FMT_RGBA_8888:
             output_base->compositor->read_format = PIXMAN_a8b8g8r8;

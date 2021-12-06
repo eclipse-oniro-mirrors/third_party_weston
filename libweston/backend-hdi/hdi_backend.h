@@ -31,6 +31,10 @@
 #include <idisplay_gralloc.h>
 
 #ifdef __cplusplus
+#include <map>
+#endif
+
+#ifdef __cplusplus
 extern "C" {
 #endif
 
@@ -61,8 +65,9 @@ struct hdi_backend {
 
 struct hdi_pending_state {
     struct hdi_backend *backend;
-    int device_id;
-    BufferHandle *framebuffer;
+#ifdef __cplusplus
+    std::map<uint32_t, BufferHandle *> framebuffers;
+#endif
 };
 
 struct hdi_backend *

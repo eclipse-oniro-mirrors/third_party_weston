@@ -123,7 +123,7 @@ hdi_backend_destroy(struct weston_compositor *ec)
 static struct hdi_pending_state *
 hdi_backend_create_pending_state(struct hdi_backend *b)
 {
-    struct hdi_pending_state *hps = (struct hdi_pending_state *)zalloc(sizeof *hps);
+    auto hps = new struct hdi_pending_state();
     if (hps == NULL) {
         return NULL;
     }
@@ -135,16 +135,14 @@ hdi_backend_create_pending_state(struct hdi_backend *b)
 static void
 hdi_backend_destroy_pending_state(struct hdi_pending_state *hps)
 {
-    free(hps);
+    delete hps;
 }
 
 static void *
 hdi_backend_repaint_begin(struct weston_compositor *compositor)
 {
     LOG_PASS();
-    struct hdi_pending_state *hps =
-        hdi_backend_create_pending_state(to_hdi_backend(compositor));
-    return hps;
+    return hdi_backend_create_pending_state(to_hdi_backend(compositor));
 }
 
 static int
@@ -153,60 +151,58 @@ hdi_backend_repaint_flush(struct weston_compositor *compositor,
 {
     LOG_SCOPE();
     struct hdi_backend *b = to_hdi_backend(compositor);
-    struct hdi_pending_state *hps = (struct hdi_pending_state *)repaint_data;
+    auto hps = reinterpret_cast<struct hdi_pending_state *>(repaint_data);
 
-    if (hps->framebuffer == NULL) {
-        hdi_backend_destroy_pending_state(hps);
-        return 0;
+    for (auto &[device_id, framebuffer] : hps->framebuffers) {
+        bool needFlushFramebuffer = false;
+        int32_t fence;
+        int ret = b->device_funcs->PrepareDisplayLayers(device_id, &needFlushFramebuffer);
+        LOG_CORE("[ret=%d] DeviceFuncs.PrepareDisplayLayers device_id: %d", ret, device_id);
+
+        /* process comp change */
+        // {
+        //     uint32_t layer_numer;
+        //     ret = b->device_funcs->GetDisplayCompChange(device_id, &layer_numer, NULL, NULL);
+        //     LOG_CORE("[ret=%d] DeviceFuncs.GetDisplayCompChange", ret);
+        //     LOG_INFO("change layer number: %d", layer_numer);
+        //
+        //     uint32_t *layers = calloc(layer_numer, sizeof *layers);
+        //     CompositionType *types = calloc(layer_numer, sizeof *types);
+        //     ret = b->device_funcs->GetDisplayCompChange(device_id, &layer_numer, layers, types);
+        //     LOG_CORE("[ret=%d] DeviceFuncs.GetDisplayCompChange", ret);
+        //     for (uint32_t i = 0; i < layer_numer; i++) {
+        //         LOG_INFO("change layer id: %d, type: %d", layers[i], types[i]);
+        //     }
+        //     free(layers);
+        //     free(types);
+        // }
+
+        if (needFlushFramebuffer == true) {
+            ret = b->device_funcs->SetDisplayClientBuffer(device_id, framebuffer, -1);
+            LOG_CORE("[ret=%d] DeviceFuncs.SetDisplayClientBuffer", ret);
+        }
+        ret = b->device_funcs->Commit(device_id, &fence);
+        LOG_CORE("[ret=%d] DeviceFuncs.Commit", ret);
+
+        /* process release fence */
+        // {
+        //     uint32_t layer_numer;
+        //     int ret = b->device_funcs->GetDisplayReleaseFence(device_id, &layer_numer, NULL, NULL);
+        //     LOG_CORE("[ret=%d] DeviceFuncs.GetDisplayReleaseFence", ret);
+        //     LOG_INFO("fence layer number: %d", layer_numer);
+        //
+        //     uint32_t *layers = calloc(layer_numer, sizeof *layers);
+        //     int32_t *fences = calloc(layer_numer, sizeof *fences);
+        //
+        //     ret = b->device_funcs->GetDisplayReleaseFence(device_id, &layer_numer, layers, fences);
+        //     LOG_CORE("[ret=%d] DeviceFuncs.GetDisplayReleaseFence", ret);
+        //
+        //     for (uint32_t i = 0; i < layer_numer; i++) {
+        //         LOG_INFO("layer id: %d, fence: %d", layers[i], fences[i]);
+        //     }
+        // }
     }
 
-    bool needFlushFramebuffer = false;
-    int32_t fence;
-    int ret = b->device_funcs->PrepareDisplayLayers(hps->device_id, &needFlushFramebuffer);
-    LOG_CORE("DeviceFuncs.PrepareDisplayLayers return %d", ret);
-
-    /* process comp change */
-    // {
-    //     uint32_t layer_numer;
-    //     ret = b->device_funcs->GetDisplayCompChange(hps->device_id, &layer_numer, NULL, NULL);
-    //     LOG_CORE("DeviceFuncs.GetDisplayCompChange return %d", ret);
-    //     LOG_INFO("change layer number: %d", layer_numer);
-    //
-    //     uint32_t *layers = calloc(layer_numer, sizeof *layers);
-    //     CompositionType *types = calloc(layer_numer, sizeof *types);
-    //     ret = b->device_funcs->GetDisplayCompChange(hps->device_id, &layer_numer, layers, types);
-    //     LOG_CORE("DeviceFuncs.GetDisplayCompChange return %d", ret);
-    //     for (uint32_t i = 0; i < layer_numer; i++) {
-    //         LOG_INFO("change layer id: %d, type: %d", layers[i], types[i]);
-    //     }
-    //     free(layers);
-    //     free(types);
-    // }
-
-    if (needFlushFramebuffer == true) {
-        ret = b->device_funcs->SetDisplayClientBuffer(hps->device_id, hps->framebuffer, -1);
-        LOG_CORE("DeviceFuncs.SetDisplayClientBuffer return %d", ret);
-    }
-    ret = b->device_funcs->Commit(hps->device_id, &fence);
-    LOG_CORE("DeviceFuncs.Commit return %d", ret);
-
-    /* process release fence */
-    // {
-    //     uint32_t layer_numer;
-    //     int ret = b->device_funcs->GetDisplayReleaseFence(hps->device_id, &layer_numer, NULL, NULL);
-    //     LOG_CORE("DeviceFuncs.GetDisplayReleaseFence return %d", ret);
-    //     LOG_INFO("fence layer number: %d", layer_numer);
-    //
-    //     uint32_t *layers = calloc(layer_numer, sizeof *layers);
-    //     int32_t *fences = calloc(layer_numer, sizeof *fences);
-    //
-    //     ret = b->device_funcs->GetDisplayReleaseFence(hps->device_id, &layer_numer, layers, fences);
-    //     LOG_CORE("DeviceFuncs.GetDisplayReleaseFence return %d", ret);
-    //
-    //     for (uint32_t i = 0; i < layer_numer; i++) {
-    //         LOG_INFO("layer id: %d, fence: %d", layers[i], fences[i]);
-    //     }
-    // }
     hdi_backend_destroy_pending_state(hps);
     return 0;
 }
@@ -258,14 +254,14 @@ hdi_backend_create(struct weston_compositor *compositor,
 
     // init hdi device
     ret = DeviceInitialize(&b->device_funcs);
-    LOG_CORE("DeviceInitialize return %d", ret);
+    LOG_CORE("[ret=%d] DeviceInitialize", ret);
     if (ret != DISPLAY_SUCCESS || b->device_funcs == NULL) {
         LOG_ERROR("DeviceInitialize failed");
         goto err_free;
     }
 
     ret = LayerInitialize(&b->layer_funcs);
-    LOG_CORE("LayerInitialize return %d", ret);
+    LOG_CORE("[ret=%d] LayerInitialize", ret);
     if (ret != DISPLAY_SUCCESS || b->layer_funcs == NULL) {
         LOG_ERROR("LayerInitialize failed");
         goto err_device_init;
@@ -304,7 +300,7 @@ hdi_backend_create(struct weston_compositor *compositor,
     } while (false);
 
     ret = b->device_funcs->RegHotPlugCallback(hdi_backend_plug_event, b);
-    LOG_CORE("DeviceFuncs.RegHotPlugCallback return %d", ret);
+    LOG_CORE("[ret=%d] DeviceFuncs.RegHotPlugCallback", ret);
 
     // init linux_dmabuf
     if (compositor->hdi_renderer->import_dmabuf) {
