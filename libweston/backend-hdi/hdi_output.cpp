@@ -241,6 +241,7 @@ hdi_output_repaint(struct weston_output *output_base,
         }
     }
 
+    LOG_IMPORTANT("device_id: %d", hps->device_id);
     for (const auto &ss : sss) {
         LOG_INFO("%s", ss.str().c_str());
     }

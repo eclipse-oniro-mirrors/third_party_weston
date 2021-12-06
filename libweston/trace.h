@@ -36,6 +36,7 @@
 #define LOG_ENTER() LOG_ENTERS("")
 #define LOG_EXIT() LOG_EXITS("")
 #define LOG_INFO(fmt, ...) log_printf(TRACE_ARGS(36), fmt, ##__VA_ARGS__)
+#define LOG_IMPORTANT(fmt, ...) log_printf(TRACE_ARGS(32), fmt, ##__VA_ARGS__)
 #define LOG_CORE(fmt, ...) log_printf(TRACE_ARGS(35), "core: " fmt, ##__VA_ARGS__)
 #define LOG_ERROR(fmt, ...) log_printf(TRACE_ARGS(31), fmt, ##__VA_ARGS__)
 #define LOG_PASS() log_printf(TRACE_ARGS(32), "pass")

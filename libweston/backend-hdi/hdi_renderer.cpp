@@ -28,6 +28,8 @@
 #include <assert.h>
 #include <chrono>
 #include <cinttypes>
+#include <map>
+#include <set>
 #include <string.h>
 #include <sstream>
 #include <sys/time.h>
@@ -60,9 +62,11 @@ struct hdi_surface_state {
     struct wl_listener surface_destroy_listener;
     struct weston_buffer_reference buffer_ref;
 
-    // hdi attribute
-    uint32_t device_id;
-    uint32_t layer_id;
+    // hdi cache attribute
+    std::map<uint32_t, uint32_t> layer_ids; // device_id: layer_id
+    std::map<uint32_t, struct hdi_output_state *> hos; // device_id: ho
+
+    // hdi once attribute
     LayerInfo layer_info;
     IRect dst_rect;
     IRect src_rect;
@@ -71,23 +75,19 @@ struct hdi_surface_state {
     CompositionType comp_type;
     TransformType rotate_type;
     BufferHandle *bh;
-
-    struct hdi_output_state *ho;
 };
 
 struct hdi_output_state {
-    std::vector<struct hdi_surface_state *> layers;
+    std::set<struct hdi_surface_state *> layers;
     uint32_t gpu_layer_id;
 };
 
-static struct hdi_output_state *
-get_output_state(struct weston_output *output)
+struct hdi_output_state * get_output_state(struct weston_output *output)
 {
     return reinterpret_cast<struct hdi_output_state *>(output->hdi_renderer_state);
 }
 
-static struct hdi_surface_state *
-get_surface_state(struct weston_surface *surface)
+struct hdi_surface_state * get_surface_state(struct weston_surface *surface)
 {
     if (surface->hdi_renderer_state == nullptr) {
         return nullptr;
@@ -95,8 +95,7 @@ get_surface_state(struct weston_surface *surface)
     return reinterpret_cast<struct hdi_surface_state *>(surface->hdi_renderer_state);
 }
 
-static void
-hdi_renderer_layer_operation(struct hdi_backend *b, int32_t device_id, int32_t layer_id,
+void hdi_renderer_layer_operation(struct hdi_backend *b, int32_t device_id, int32_t layer_id,
                              BufferHandle *buffer, int32_t fence,
                              LayerAlpha *alpha,
                              IRect *dst,
@@ -134,8 +133,13 @@ hdi_renderer_layer_operation(struct hdi_backend *b, int32_t device_id, int32_t l
     LOG_CORE("[ret=%d] LayerFuncs.SetTransformMode %d", ret, rotate_type);
 }
 
-static BufferHandle *
-hdi_renderer_surface_state_mmap(struct hdi_surface_state *hss)
+void hdi_renderer_layer_close(struct hdi_backend *b, int32_t device_id, int32_t layer_id)
+{
+    int ret = b->layer_funcs->CloseLayer(device_id, layer_id);
+    LOG_CORE("[ret=%d] LayerFuncs.CloseLayer device_id: %d, layer_id: %d", ret, device_id, layer_id);
+}
+
+BufferHandle * hdi_renderer_surface_state_mmap(struct hdi_surface_state *hss)
 {
     if (hss == NULL || hss->surface == NULL) {
         return NULL;
@@ -164,8 +168,7 @@ hdi_renderer_surface_state_mmap(struct hdi_surface_state *hss)
     return bh;
 }
 
-static void
-hdi_renderer_surface_state_unmap(struct hdi_surface_state *hss)
+void hdi_renderer_surface_state_unmap(struct hdi_surface_state *hss)
 {
     if (hss == NULL || hss->surface == NULL) {
         return;
@@ -195,8 +198,7 @@ hdi_renderer_surface_state_unmap(struct hdi_surface_state *hss)
     }
 }
 
-static void
-hdi_renderer_surface_state_on_destroy(struct wl_listener *listener,
+void hdi_renderer_surface_state_on_destroy(struct wl_listener *listener,
                                       void *data)
 {
     LOG_PASS();
@@ -204,19 +206,13 @@ hdi_renderer_surface_state_on_destroy(struct wl_listener *listener,
                                                  struct hdi_surface_state,
                                                  surface_destroy_listener);
     struct hdi_backend *b = to_hdi_backend(hss->compositor);
-    if (hss->layer_id != -1) {
-        int ret = b->layer_funcs->CloseLayer(hss->device_id, hss->layer_id);
-        LOG_CORE("LayerFuncs.CloseLayer id=%d return %d", hss->layer_id, ret);
-        hss->layer_id = -1;
+    for (const auto &[device_id, layer_id] : hss->layer_ids) {
+        hdi_renderer_layer_close(b, device_id, layer_id);
 
         // delete old layers in ho's cache
-        if (hss->ho) {
-            for (auto it = hss->ho->layers.begin(); it != hss->ho->layers.end(); it++) {
-                if (*it == hss) {
-                    hss->ho->layers.erase(it);
-                    break;
-                }
-            }
+        auto it = hss->hos.find(device_id);
+        if (it != hss->hos.end()) {
+            it->second->layers.erase(hss);
         }
     }
 
@@ -226,12 +222,11 @@ hdi_renderer_surface_state_on_destroy(struct wl_listener *listener,
     free(hss);
 }
 
-static int
-hdi_renderer_create_surface_state(struct weston_surface *surface)
+int hdi_renderer_create_surface_state(struct weston_surface *surface)
 {
     LOG_PASS();
     // life time
-    struct hdi_surface_state *hss = (struct hdi_surface_state *)zalloc(sizeof *hss);
+    auto hss = new struct hdi_surface_state();
     if (hss == NULL) {
         return -1;
     }
@@ -244,16 +239,10 @@ hdi_renderer_create_surface_state(struct weston_surface *surface)
         hdi_renderer_surface_state_on_destroy;
     wl_signal_add(&surface->destroy_signal,
         &hss->surface_destroy_listener);
-
-    struct hdi_backend *b = to_hdi_backend(surface->compositor);
-
-    // init
-    hss->layer_id = -1;
     return 0;
 }
 
-static void
-hdi_renderer_attach(struct weston_surface *surface,
+void hdi_renderer_attach(struct weston_surface *surface,
                     struct weston_buffer *buffer)
 {
     LOG_SCOPE();
@@ -287,8 +276,7 @@ hdi_renderer_attach(struct weston_surface *surface,
     LOG_ERROR("cannot attach buffer");
 }
 
-static void
-hdi_renderer_destroy(struct weston_compositor *compositor)
+void hdi_renderer_destroy(struct weston_compositor *compositor)
 {
     LOG_PASS();
     struct hdi_renderer *renderer = (struct hdi_renderer *)compositor->hdi_renderer;
@@ -296,28 +284,24 @@ hdi_renderer_destroy(struct weston_compositor *compositor)
     free(renderer);
 }
 
-static void
-hdi_renderer_flush_damage(struct weston_surface *surface)
+void hdi_renderer_flush_damage(struct weston_surface *surface)
 {
 }
 
-static bool
-hdi_renderer_import_dmabuf(struct weston_compositor *compositor,
+bool hdi_renderer_import_dmabuf(struct weston_compositor *compositor,
                            struct linux_dmabuf_buffer *buffer)
 {
     return true;
 }
 
-static void
-hdi_renderer_query_dmabuf_formats(struct weston_compositor *compositor,
+void hdi_renderer_query_dmabuf_formats(struct weston_compositor *compositor,
                                   int **formats, int *num_formats)
 {
     *num_formats = 0;
     *formats = NULL;
 }
 
-static void
-hdi_renderer_query_dmabuf_modifiers(struct weston_compositor *compositorc,
+void hdi_renderer_query_dmabuf_modifiers(struct weston_compositor *compositorc,
                                     int format,
                                     uint64_t **modifiers,
                                     int *num_modifiers)
@@ -326,8 +310,7 @@ hdi_renderer_query_dmabuf_modifiers(struct weston_compositor *compositorc,
     *modifiers = NULL;
 }
 
-static int
-hdi_renderer_read_pixels(struct weston_output *output,
+int hdi_renderer_read_pixels(struct weston_output *output,
             pixman_format_code_t format, void *pixels,
             uint32_t x, uint32_t y,
             uint32_t width, uint32_t height)
@@ -364,8 +347,7 @@ hdi_renderer_read_pixels(struct weston_output *output,
 typedef void(*weston_view_compute_global_region_func)(struct weston_view *view,
     float x, float y, float *vx, float *vy);
 
-static void
-weston_view_compute_global_region(struct weston_view *view,
+void weston_view_compute_global_region(struct weston_view *view,
                                   pixman_region32_t *outr,
                                   pixman_region32_t *inr,
                                   weston_view_compute_global_region_func fn)
@@ -403,24 +385,21 @@ weston_view_compute_global_region(struct weston_view *view,
 #undef min
 #undef max
 
-static void
-weston_view_to_global_region(struct weston_view *view,
+void weston_view_to_global_region(struct weston_view *view,
                              pixman_region32_t *outr,
                              pixman_region32_t *inr)
 {
     weston_view_compute_global_region(view, outr, inr, weston_view_to_global_float);
 }
 
-static void
-weston_view_from_global_region(struct weston_view *view,
+void weston_view_from_global_region(struct weston_view *view,
                                pixman_region32_t *outr,
                                pixman_region32_t *inr)
 {
     weston_view_compute_global_region(view, outr, inr, weston_view_from_global_float);
 }
 
-static void
-hdi_renderer_repaint_output_calc_region(pixman_region32_t *global_repaint_region,
+void hdi_renderer_repaint_output_calc_region(pixman_region32_t *global_repaint_region,
                                         pixman_region32_t *buffer_repaint_region,
                                         pixman_region32_t *output_damage,
                                         struct weston_output *output,
@@ -506,8 +485,7 @@ hdi_renderer_repaint_output_calc_region(pixman_region32_t *global_repaint_region
     pixman_region32_fini(&repaint_output);
 }
 
-static void
-hdi_renderer_surface_state_calc_rect(struct hdi_surface_state *hss,
+void hdi_renderer_surface_state_calc_rect(struct hdi_surface_state *hss,
     pixman_region32_t *output_damage, struct weston_output *output, struct weston_view *view)
 {
     pixman_region32_t global_repaint_region;
@@ -533,12 +511,14 @@ hdi_renderer_surface_state_calc_rect(struct hdi_surface_state *hss,
     pixman_region32_fini(&buffer_repaint_region);
 }
 
-static int
-hdi_renderer_surface_state_create_layer(struct hdi_surface_state *hss,
+int hdi_renderer_surface_state_create_layer(struct hdi_surface_state *hss,
     struct hdi_backend *b, struct weston_output *output)
 {
     struct weston_mode *mode = output->current_mode;
-    if (hss->layer_id == -1) {
+    struct weston_head *whead = weston_output_get_first_head(output);
+    auto device_id = hdi_head_get_device_id(whead);
+    auto it = hss->layer_ids.find(device_id);
+    if (it == hss->layer_ids.end()) {
         hss->layer_info.width = mode->width;
         hss->layer_info.height = mode->height;
         if (hss->surface->type == WL_SURFACE_TYPE_VIDEO) {
@@ -551,25 +531,22 @@ hdi_renderer_surface_state_create_layer(struct hdi_surface_state *hss,
             hss->bh = bh;
         }
         hss->layer_info.type = LAYER_TYPE_GRAPHIC;
-        struct weston_head *whead = weston_output_get_first_head(output);
-        hss->device_id = hdi_head_get_device_id(whead);
-        int ret = b->layer_funcs->CreateLayer(hss->device_id,
-                                              &hss->layer_info, &hss->layer_id);
+        int ret = b->layer_funcs->CreateLayer(device_id,
+                                              &hss->layer_info, &hss->layer_ids[device_id]);
         LOG_CORE("LayerFuncs.CreateLayer return %d", ret);
         if (ret != DISPLAY_SUCCESS) {
             LOG_ERROR("create layer failed");
-            hss->layer_id = -1;
+            hss->layer_ids.erase(device_id);
             return -1;
         }
-        LOG_INFO("create layer: %d", hss->layer_id);
+        LOG_IMPORTANT("create layer: {%d:%d}", device_id, hss->layer_ids[device_id]);
     } else {
-        LOG_INFO("use layer: %d", hss->layer_id);
+        LOG_IMPORTANT("use layer: {%d:%d}", device_id, it->second);
     }
     return 0;
 }
 
-static void
-hdi_renderer_repaint_output(struct weston_output *output,
+void hdi_renderer_repaint_output(struct weston_output *output,
                             pixman_region32_t *output_damage)
 {
     LOG_SCOPE();
@@ -597,8 +574,8 @@ hdi_renderer_repaint_output(struct weston_output *output,
             continue;
         }
 
-        ho->layers.push_back(hss);
-        hss->ho = ho;
+        ho->layers.insert(hss);
+        hss->hos[device_id] = ho;
 
         hdi_renderer_surface_state_calc_rect(hss, output_damage, output, view);
         hss->zorder = zorder++;
@@ -608,24 +585,14 @@ hdi_renderer_repaint_output(struct weston_output *output,
             hss->zorder += 100;
         } else {
             hss->comp_type = COMPOSITION_DEVICE;
-            BufferHandle *bh = hdi_renderer_surface_state_mmap(hss);
         }
     }
 
     // close not composite layer
     for (auto &hss : old_layers) {
-        bool occur = false;
-        for (const auto &layer : ho->layers) {
-            if (hss == layer) {
-                occur = true;
-                break;
-            }
-        }
-
-        if (!occur) {
-            int ret = b->layer_funcs->CloseLayer(hss->device_id, hss->layer_id);
-            LOG_CORE("LayerFuncs.CloseLayer %d return %d", hss->layer_id, ret);
-            hss->layer_id = -1;
+        if (ho->layers.find(hss) == ho->layers.end()) {
+            hdi_renderer_layer_close(b, device_id, hss->layer_ids[device_id]);
+            hss->layer_ids.erase(device_id);
         }
     }
 
@@ -650,7 +617,7 @@ hdi_renderer_repaint_output(struct weston_output *output,
         }
 
         LayerAlpha alpha = { .enPixelAlpha = true };
-        hdi_renderer_layer_operation(b, device_id, hss->layer_id,
+        hdi_renderer_layer_operation(b, device_id, hss->layer_ids[device_id],
                                      bh, -1,
                                      &alpha,
                                      &hss->dst_rect,
@@ -662,15 +629,13 @@ hdi_renderer_repaint_output(struct weston_output *output,
     }
 }
 
-static void
-hdi_renderer_surface_set_color(struct weston_surface *surface,
+void hdi_renderer_surface_set_color(struct weston_surface *surface,
                                float red, float green,
                                float blue, float alpha)
 {
 }
 
-static void
-hdi_renderer_surface_get_content_size(struct weston_surface *surface,
+void hdi_renderer_surface_get_content_size(struct weston_surface *surface,
                                int *width, int *height)
 {
     auto hss = get_surface_state(surface);
@@ -693,8 +658,7 @@ hdi_renderer_surface_get_content_size(struct weston_surface *surface,
     return;
 }
 
-static int
-hdi_renderer_surface_copy_content(struct weston_surface *surface,
+int hdi_renderer_surface_copy_content(struct weston_surface *surface,
                                   void *target, size_t size,
                                   int src_x, int src_y, int width, int height)
 {
@@ -715,8 +679,7 @@ hdi_renderer_surface_copy_content(struct weston_surface *surface,
     return 0;
 }
 
-int
-hdi_renderer_init(struct weston_compositor *compositor)
+int hdi_renderer_init(struct weston_compositor *compositor)
 {
     LOG_PASS();
     struct hdi_renderer *renderer = (struct hdi_renderer *)zalloc(sizeof *renderer);
@@ -737,8 +700,7 @@ hdi_renderer_init(struct weston_compositor *compositor)
     return 0;
 }
 
-int
-hdi_renderer_output_create(struct weston_output *output,
+int hdi_renderer_output_create(struct weston_output *output,
     const struct hdi_renderer_output_options *options)
 {
     LOG_SCOPE();
@@ -748,8 +710,7 @@ hdi_renderer_output_create(struct weston_output *output,
     return 0;
 }
 
-void
-hdi_renderer_output_destroy(struct weston_output *output)
+void hdi_renderer_output_destroy(struct weston_output *output)
 {
     LOG_SCOPE();
     auto ho = (struct hdi_output_state *)output->hdi_renderer_state;
@@ -757,15 +718,13 @@ hdi_renderer_output_destroy(struct weston_output *output)
         struct hdi_backend *b = to_hdi_backend(output->compositor);
         struct weston_head *whead = weston_output_get_first_head(output);
         uint32_t device_id = hdi_head_get_device_id(whead);
-        int ret = b->layer_funcs->CloseLayer(device_id, ho->gpu_layer_id);
-        LOG_CORE("LayerFuncs.CloseLayer GPU return %d", ret);
+        hdi_renderer_layer_close(b, device_id, ho->gpu_layer_id);
     }
 
     delete ho;
 }
 
-void
-hdi_renderer_output_set_gpu_buffer(struct weston_output *output, BufferHandle *buffer)
+void hdi_renderer_output_set_gpu_buffer(struct weston_output *output, BufferHandle *buffer)
 {
     LOG_SCOPE();
     struct hdi_backend *b = to_hdi_backend(output->compositor);
@@ -776,8 +735,7 @@ hdi_renderer_output_set_gpu_buffer(struct weston_output *output, BufferHandle *b
 
     // close last gpu layer
     if (ho->gpu_layer_id != -1) {
-        int ret = b->layer_funcs->CloseLayer(device_id, ho->gpu_layer_id);
-        LOG_CORE("LayerFuncs.CloseLayer GPU return %d", ret);
+        hdi_renderer_layer_close(b, device_id, ho->gpu_layer_id);
     }
 
     // create layer
@@ -795,7 +753,7 @@ hdi_renderer_output_set_gpu_buffer(struct weston_output *output, BufferHandle *b
         ho->gpu_layer_id = -1;
         return;
     }
-    LOG_INFO("create layer %d", ho->gpu_layer_id);
+    LOG_INFO("create layer GPU {%d:%d}", device_id, ho->gpu_layer_id);
 
     // param
     LayerAlpha alpha = { .enPixelAlpha = true };
