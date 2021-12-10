@@ -405,25 +405,6 @@ void hdi_renderer_repaint_output_calc_region(pixman_region32_t *global_repaint_r
                                         struct weston_output *output,
                                         struct weston_view *view)
 {
-    pixman_region32_t surface_region;
-    pixman_region32_init_rect(&surface_region, 0, 0, view->surface->width, view->surface->height);
-
-    pixman_region32_t repaint_output;
-    pixman_region32_init(&repaint_output);
-    pixman_region32_copy(&repaint_output, output_damage);
-    if (output->zoom.active) {
-        weston_matrix_transform_region(&repaint_output, &output->matrix, &repaint_output);
-    } else {
-        pixman_region32_translate(&repaint_output, -output->x, -output->y);
-        weston_transformed_region(output->width, output->height,
-                static_cast<enum wl_output_transform>(output->transform),
-                output->current_scale,
-                &repaint_output, &repaint_output);
-    }
-
-    LOG_REGION(1, &surface_region);
-    LOG_REGION(2, &repaint_output);
-
     struct weston_matrix matrix = output->inverse_matrix;
     if (view->transform.enabled) {
         weston_matrix_multiply(&matrix, &view->transform.inverse);
@@ -434,6 +415,7 @@ void hdi_renderer_repaint_output_calc_region(pixman_region32_t *global_repaint_r
         LOG_INFO("transform disabled");
     }
     weston_matrix_multiply(&matrix, &view->surface->surface_to_buffer_matrix);
+
     auto hss = get_surface_state(view->surface);
     if (matrix.d[0] == matrix.d[5] && matrix.d[0] == 0) {
         if (matrix.d[4] > 0 && matrix.d[1] > 0) {
@@ -468,21 +450,30 @@ void hdi_renderer_repaint_output_calc_region(pixman_region32_t *global_repaint_r
     LOG_MATRIX(&matrix);
     LOG_INFO("%d %d", view->surface->width, view->surface->height);
 
-    weston_view_to_global_region(view, global_repaint_region, &surface_region);
-    pixman_region32_intersect(global_repaint_region, global_repaint_region, &repaint_output);
+    pixman_region32_t surface_region;
+    pixman_region32_t surface_repaint_region;
+    pixman_region32_init_rect(&surface_region, 0, 0, view->surface->width, view->surface->height);
+    pixman_region32_init(&surface_repaint_region);
+
+    LOG_REGION(1, &surface_region);
+    LOG_REGION(2, &view->transform.boundingbox);
+    pixman_region32_intersect(global_repaint_region, &view->transform.boundingbox, output_damage);
     LOG_REGION(3, global_repaint_region);
 
-    pixman_region32_t surface_repaint_region;
-    pixman_region32_init(&surface_repaint_region);
-    weston_view_from_global_region(view, &surface_repaint_region, global_repaint_region);
+    weston_matrix_transform_region(&surface_repaint_region, &view->transform.inverse, global_repaint_region);
     LOG_REGION(4, &surface_repaint_region);
 
-    pixman_region32_init(buffer_repaint_region);
     weston_surface_to_buffer_region(view->surface, &surface_repaint_region, buffer_repaint_region);
     LOG_REGION(5, buffer_repaint_region);
+
+    pixman_region32_intersect(buffer_repaint_region, buffer_repaint_region, &surface_region);
+    LOG_REGION(6, buffer_repaint_region);
+
+    pixman_region32_translate(global_repaint_region, -output->x, -output->y);
+    LOG_REGION(7, global_repaint_region);
+
     pixman_region32_fini(&surface_repaint_region);
     pixman_region32_fini(&surface_region);
-    pixman_region32_fini(&repaint_output);
 }
 
 void hdi_renderer_surface_state_calc_rect(struct hdi_surface_state *hss,
@@ -490,6 +481,9 @@ void hdi_renderer_surface_state_calc_rect(struct hdi_surface_state *hss,
 {
     pixman_region32_t global_repaint_region;
     pixman_region32_t buffer_repaint_region;
+    pixman_region32_init(&global_repaint_region);
+    pixman_region32_init(&buffer_repaint_region);
+
     hdi_renderer_repaint_output_calc_region(&global_repaint_region,
                                             &buffer_repaint_region,
                                             output_damage,
@@ -560,8 +554,17 @@ void hdi_renderer_repaint_output(struct weston_output *output,
 
     int32_t zorder = 2;
     struct weston_view *view;
+    pixman_region32_t repaint;
     wl_list_for_each_reverse(view, &compositor->view_list, link) {
         if (view->renderer_type != WESTON_RENDERER_TYPE_HDI) {
+            continue;
+        }
+        pixman_region32_init(&repaint);
+        pixman_region32_intersect(&repaint,
+                        &view->transform.boundingbox, output_damage);
+        pixman_region32_subtract(&repaint, &repaint, &view->clip);
+
+        if (!pixman_region32_not_empty(&repaint)) {
             continue;
         }
 
@@ -600,6 +603,14 @@ void hdi_renderer_repaint_output(struct weston_output *output,
         if (view->renderer_type != WESTON_RENDERER_TYPE_HDI) {
             continue;
         }
+        pixman_region32_init(&repaint);
+        pixman_region32_intersect(&repaint,
+                        &view->transform.boundingbox, output_damage);
+        pixman_region32_subtract(&repaint, &repaint, &view->clip);
+
+        if (!pixman_region32_not_empty(&repaint)) {
+            continue;
+        }
 
         LOG_INFO("LayerOperation: %p", view);
         auto hss = get_surface_state(view->surface);
@@ -627,6 +638,7 @@ void hdi_renderer_repaint_output(struct weston_output *output,
                                      hss->comp_type,
                                      hss->rotate_type);
     }
+    pixman_region32_fini(&repaint);
 }
 
 void hdi_renderer_surface_set_color(struct weston_surface *surface,
