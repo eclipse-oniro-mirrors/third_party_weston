@@ -2710,7 +2710,7 @@ weston_compositor_build_view_list(struct weston_compositor *compositor)
 	uint32_t index = 0;
 	wl_list_for_each_reverse(view, &compositor->view_list, link) {
 		if (index < view_count / 2 && compositor->gpu_renderer) {
-			view->renderer_type = WESTON_RENDERER_TYPE_GPU;
+			view->renderer_type = WESTON_RENDERER_TYPE_HDI;
 		} else {
 			view->renderer_type = WESTON_RENDERER_TYPE_HDI;
 		}
