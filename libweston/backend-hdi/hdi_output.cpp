@@ -216,7 +216,10 @@ hdi_output_repaint(struct weston_output *output_base,
     // prepare framebuffer
     output->current_framebuffer_id = (output->current_framebuffer_id + 1) % 2;
     auto &hdi_framebuffer = output->hdi_framebuffers[output->current_framebuffer_id];
-    int gl_framebuffer_id = b->glri->output_get_current_fbo_index(output_base);
+    int32_t gl_framebuffer_id = output->current_framebuffer_id;
+    if (b->glri) {
+        gl_framebuffer_id = b->glri->output_get_current_fbo_index(output_base);
+    }
     auto &gl_framebuffer = output->gl_framebuffers[gl_framebuffer_id];
 
     // assign view to renderer
@@ -399,7 +402,7 @@ hdi_output_enable(struct weston_output *base)
         fbo_options.handle[i] = output->gl_framebuffers[i];
     }
 
-    if (base->compositor->gpu_renderer) {
+    if (base->compositor->gpu_renderer && b->glri) {
         b->glri->output_fbo_create(base, &fbo_options);
     }
 
