@@ -195,6 +195,7 @@ struct gl_renderer_interface {
 	int (*output_pbuffer_create)(struct weston_output *output,
 				     const struct gl_renderer_pbuffer_options *options);
 
+	// OHOS hdi-backend
 	int (*output_fbo_create)(struct weston_output *output,
 				     const struct gl_renderer_fbo_options *options);
 
@@ -238,6 +239,9 @@ struct gl_renderer_interface {
 	 * EGL_ANDROID_native_fence_sync extension.
 	 */
 	int (*create_fence_fd)(struct weston_output *output);
+
+	// OHOS hdi-backend
+	int (*output_get_current_fbo_index)(struct weston_output *output);
 };
 
 #endif

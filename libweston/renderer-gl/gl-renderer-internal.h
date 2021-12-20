@@ -129,10 +129,6 @@ struct gl_renderer {
 	PFNEGLWAITSYNCKHRPROC wait_sync;
 	int gbm_fd;
 	struct gbm_device *device;
-
-	struct gl_fbo fbo[GL_RENDERER_FRMAEBUFFER_SIZE];
-	int current_fbo_index;
-	bool use_fbo;
 };
 
 static inline struct gl_renderer *

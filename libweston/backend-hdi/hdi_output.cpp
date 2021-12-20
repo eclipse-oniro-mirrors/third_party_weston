@@ -211,11 +211,13 @@ hdi_output_repaint(struct weston_output *output_base,
     struct hdi_output *output = to_hdi_output(output_base);
     struct weston_head *h = weston_output_get_first_head(output_base);
     auto device_id = hdi_head_get_device_id(h);
+    struct hdi_backend *b = to_hdi_backend(output_base->compositor);
 
     // prepare framebuffer
     output->current_framebuffer_id = (output->current_framebuffer_id + 1) % 2;
     auto &hdi_framebuffer = output->hdi_framebuffers[output->current_framebuffer_id];
-    auto &gl_framebuffer = output->gl_framebuffers[output->current_framebuffer_id];
+    int gl_framebuffer_id = b->glri->output_get_current_fbo_index(output_base);
+    auto &gl_framebuffer = output->gl_framebuffers[gl_framebuffer_id];
 
     // assign view to renderer
     bool need_gpu_render = false;
@@ -224,6 +226,17 @@ hdi_output_repaint(struct weston_output *output_base,
     int32_t cnt = 0;
     struct weston_view *view;
     wl_list_for_each_reverse(view, &output_base->compositor->view_list, link) {
+        pixman_region32_t repaint;
+        pixman_region32_init(&repaint);
+        pixman_region32_intersect(&repaint,
+                        &view->transform.boundingbox, damage);
+        pixman_region32_subtract(&repaint, &repaint, &view->clip);
+
+        if (!pixman_region32_not_empty(&repaint)) {
+            continue;
+        }
+        pixman_region32_fini(&repaint);
+
         if (cnt++ % 5 == 0) {
             sss.emplace_back();
             sss.back() << "view_list:";

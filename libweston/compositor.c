@@ -2708,13 +2708,19 @@ weston_compositor_build_view_list(struct weston_compositor *compositor)
 	// OHOS mix render
 	uint32_t view_count = wl_list_length(&compositor->view_list);
 	uint32_t index = 0;
-	wl_list_for_each_reverse(view, &compositor->view_list, link) {
-		if (index < view_count / 2 && compositor->gpu_renderer) {
-			view->renderer_type = WESTON_RENDERER_TYPE_HDI;
-		} else {
+	if (view_count <= 3) {
+		wl_list_for_each_reverse(view, &compositor->view_list, link) {
 			view->renderer_type = WESTON_RENDERER_TYPE_HDI;
 		}
-		index++;
+	} else {
+		wl_list_for_each_reverse(view, &compositor->view_list, link) {
+			if (index < view_count / 2 && compositor->gpu_renderer) {
+				view->renderer_type = WESTON_RENDERER_TYPE_GPU;
+			} else {
+				view->renderer_type = WESTON_RENDERER_TYPE_HDI;
+			}
+			index++;
+		}
 	}
 
     LOG_EXIT();
