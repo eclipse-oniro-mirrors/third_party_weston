@@ -246,6 +246,12 @@ hdi_output_repaint(struct weston_output *output_base,
         }
         sss.back() << " [" << view->renderer_type << "]" << (void *)view << ",";
 
+        ViewDumpInfo dump_info = {
+            .view = view,
+            .type = view->renderer_type,
+        };
+        b->view_dump_info_pending[device_id].push_back(dump_info);
+
         if (view->renderer_type == WESTON_RENDERER_TYPE_GPU) {
             need_gpu_render = true;
         } else if (view->renderer_type == WESTON_RENDERER_TYPE_HDI) {

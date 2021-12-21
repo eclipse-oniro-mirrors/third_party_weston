@@ -105,6 +105,17 @@ void hdi_renderer_layer_operation(struct hdi_backend *b, int32_t device_id, int3
                              CompositionType comp_type,
                              TransformType rotate_type)
 {
+    LayerDumpInfo dump_info = {
+        .alpha = *alpha,
+        .src = *src,
+        .dst = *dst,
+        .zorder = zorder,
+        .blend_type = blend_type,
+        .comp_type = comp_type,
+        .rotate_type = rotate_type,
+    };
+    b->layer_dump_info_pending[device_id][layer_id] = dump_info;
+
     LOG_CORE("LayerOperation device_id=%d layer_id=%d", device_id, layer_id);
     if (buffer != nullptr) {
         auto ret = b->layer_funcs->SetLayerBuffer(device_id, layer_id, buffer, fence);
@@ -622,6 +633,7 @@ void hdi_renderer_repaint_output(struct weston_output *output,
             continue;
         }
 
+        b->layer_dump_info_pending[device_id][hss->layer_ids[device_id]].view = view;
         BufferHandle *bh = nullptr;
         if (hss->surface->type != WL_SURFACE_TYPE_VIDEO) {
             bh = hdi_renderer_surface_state_mmap(hss);

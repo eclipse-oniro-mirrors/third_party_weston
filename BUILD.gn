@@ -641,6 +641,7 @@ ohos_shared_library("hdi-backend") {
     ":trace",
     "//drivers/peripheral/display/hal:hdi_display_device",
     "//drivers/peripheral/display/hdi_service/gralloc/client:hdi_gralloc_client",
+    "//foundation/graphic/standard:libgraphic_dumper_client",
     "//foundation/graphic/standard/frameworks/vsync:libvsync_module",
     "//third_party/libdrm:libdrm",
     "//third_party/wayland-protocols_standard:linux_dmabuf_unstable_v1_protocol",

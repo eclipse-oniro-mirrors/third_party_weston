@@ -27,7 +27,9 @@
 #include "config.h"
 
 #include <assert.h>
+#include <sys/time.h>
 
+#include <graphic_dumper_helper.h>
 #include <libudev.h>
 
 #include "hdi_backend.h"
@@ -50,6 +52,9 @@ extern "C" {
 
 #include "libweston/trace.h"
 DEFINE_LOG_LABEL("HdiBackend");
+constexpr const char *dumper_view_tag = "weston.view";
+constexpr const char *dumper_hdi_tag = "weston.hdi";
+constexpr const char *dumper_vsync_tag = "weston.vsync";
 
 struct hdi_backend *
 to_hdi_backend(struct weston_compositor *base)
@@ -117,7 +122,7 @@ hdi_backend_destroy(struct weston_compositor *ec)
         udev_unref(b->udev);
     }
 
-    free(b);
+    delete b;
 }
 
 static struct hdi_pending_state *
@@ -142,6 +147,9 @@ static void *
 hdi_backend_repaint_begin(struct weston_compositor *compositor)
 {
     LOG_PASS();
+    struct hdi_backend *b = to_hdi_backend(compositor);
+    b->layer_dump_info_pending.clear();
+    b->view_dump_info_pending.clear();
     return hdi_backend_create_pending_state(to_hdi_backend(compositor));
 }
 
@@ -153,6 +161,8 @@ hdi_backend_repaint_flush(struct weston_compositor *compositor,
     struct hdi_backend *b = to_hdi_backend(compositor);
     auto hps = reinterpret_cast<struct hdi_pending_state *>(repaint_data);
 
+    b->view_dump_info = b->view_dump_info_pending;
+    b->layer_dump_info = b->layer_dump_info_pending;
     for (auto &[device_id, framebuffer] : hps->framebuffers) {
         bool needFlushFramebuffer = false;
         int32_t fence;
@@ -181,6 +191,10 @@ hdi_backend_repaint_flush(struct weston_compositor *compositor,
             ret = b->device_funcs->SetDisplayClientBuffer(device_id, framebuffer, -1);
             LOG_CORE("[ret=%d] DeviceFuncs.SetDisplayClientBuffer", ret);
         }
+
+        gettimeofday(&b->samples[b->sample_current], nullptr);
+        b->sample_current = (b->sample_current + 1) % (sizeof(b->samples) / sizeof(b->samples[0]));
+
         ret = b->device_funcs->Commit(device_id, &fence);
         LOG_CORE("[ret=%d] DeviceFuncs.Commit", ret);
 
@@ -207,6 +221,57 @@ hdi_backend_repaint_flush(struct weston_compositor *compositor,
     return 0;
 }
 
+void OnDumpView(struct hdi_backend *b)
+{
+    auto dumper = OHOS::GraphicDumperHelper::GetInstance();
+    for (auto &[device_id, res] : b->view_dump_info) {
+        dumper->SendInfo(dumper_view_tag, "device_id: %d", device_id);
+        for (auto &info : res) {
+            dumper->SendInfo(dumper_view_tag, "    [%s]%p",
+                    info.type == WESTON_RENDERER_TYPE_HDI ? "hdi" :
+                    info.type == WESTON_RENDERER_TYPE_GPU ? "gpu" :
+                    "unknown", info.view);
+        }
+    }
+
+}
+
+void OnDumpHdi(struct hdi_backend *b)
+{
+    auto dumper = OHOS::GraphicDumperHelper::GetInstance();
+    for (auto &[device_id, res] : b->layer_dump_info) {
+        dumper->SendInfo(dumper_hdi_tag, "device_id: %d", device_id);
+        for (auto &[layer_id, info] : res) {
+            dumper->SendInfo(dumper_hdi_tag, "    layer_id: %d", layer_id);
+            dumper->SendInfo(dumper_hdi_tag, "        view %p", info.view);
+            dumper->SendInfo(dumper_hdi_tag, "        src x: %d, y: %d, w: %d, h: %d",
+                info.src.x, info.src.y, info.src.w, info.src.h);
+            dumper->SendInfo(dumper_hdi_tag, "        dst x: %d, y: %d, w: %d, h: %d",
+                info.dst.x, info.dst.y, info.dst.w, info.dst.h);
+            dumper->SendInfo(dumper_hdi_tag, "        zorder: %d, blend: %d, composition: %d, transformMode: %d",
+                info.zorder, info.blend_type, info.comp_type, info.rotate_type);
+        }
+    }
+}
+
+void OnDumpVsync(struct hdi_backend *b)
+{
+    auto &samples = b->samples;
+    auto &sample_current = b->sample_current;
+    auto framesize = sizeof(samples) / sizeof(samples[0]) - 1;
+
+    auto dumper = OHOS::GraphicDumperHelper::GetInstance();
+    auto last = (sample_current + framesize) % (framesize + 1);
+    int64_t diff = (int64_t)samples[last].tv_sec * 1000000 + (int64_t)samples[last].tv_usec;
+    diff -= (int64_t)samples[sample_current].tv_sec * 1000000 + (int64_t)samples[sample_current].tv_usec;
+    if (diff == 0) {
+        diff = 1;
+    }
+
+    double rate = 1000000.0 / diff * framesize;
+    dumper->SendInfo(dumper_vsync_tag, "framerate: %lf", rate);
+}
+
 struct hdi_backend *
 hdi_backend_create(struct weston_compositor *compositor,
             struct weston_hdi_backend_config *config)
@@ -215,7 +280,7 @@ hdi_backend_create(struct weston_compositor *compositor,
     int ret;
 
     // ctor1. alloc memory
-    struct hdi_backend *b = (struct hdi_backend *)zalloc(sizeof *b);
+    auto b = new struct hdi_backend();
     if (b == NULL) {
         LOG_ERROR("zalloc hdi-backend failed");
         return NULL;
@@ -233,6 +298,11 @@ hdi_backend_create(struct weston_compositor *compositor,
     b->base.create_output = hdi_output_create;
     b->base.device_changed = NULL;
     b->base.can_scanout_dmabuf = NULL;
+
+    auto dumper = OHOS::GraphicDumperHelper::GetInstance();
+    dumper->AddDumpListener(dumper_view_tag, std::bind(OnDumpView, b));
+    dumper->AddDumpListener(dumper_hdi_tag, std::bind(OnDumpHdi, b));
+    dumper->AddDumpListener(dumper_vsync_tag, std::bind(OnDumpVsync, b));
 
     // init renderer
     ret = mix_renderer_init(compositor);
@@ -333,6 +403,6 @@ err_device_init:
 
 err_free:
     weston_compositor_shutdown(compositor);
-    free(b);
+    delete b;
     return NULL;
 }
