@@ -554,8 +554,8 @@ calc_surface_to_global_matrix_and_mask_to_weston_surface(
 	/* this intersected ivi_rectangle would be used for masking
 	 * weston_surface
 	 */
-	ivi_rectangle_intersect(&surface_source_rect, &weston_surface_rect,
-				&surface_result);
+	// ivi_rectangle_intersect(&surface_source_rect, &weston_surface_rect,
+	// 			&surface_result);
 
 	/*
 	 * destination rectangle of layer in multi screens coordinate
@@ -567,7 +567,7 @@ calc_surface_to_global_matrix_and_mask_to_weston_surface(
 	/* calc masking area of weston_surface from m */
 	calc_inverse_matrix_transform(m,
 				      &layer_dest_rect_in_global_intersected,
-				      &surface_result,
+				      &weston_surface_rect,
 				      result);
 }
 

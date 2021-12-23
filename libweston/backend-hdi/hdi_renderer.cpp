@@ -425,7 +425,7 @@ void hdi_renderer_repaint_output_calc_region(pixman_region32_t *global_repaint_r
                 -view->geometry.x, -view->geometry.y, 0);
         LOG_INFO("transform disabled");
     }
-    weston_matrix_multiply(&matrix, &view->surface->surface_to_buffer_matrix);
+    weston_matrix_multiply(&matrix, &view->surface->buffer_to_surface_matrix);
 
     auto hss = get_surface_state(view->surface);
     if (matrix.d[0] == matrix.d[5] && matrix.d[0] == 0) {
@@ -461,12 +461,13 @@ void hdi_renderer_repaint_output_calc_region(pixman_region32_t *global_repaint_r
     LOG_MATRIX(&matrix);
     LOG_INFO("%d %d", view->surface->width, view->surface->height);
 
-    pixman_region32_t surface_region;
+    pixman_region32_t buffer_region;
     pixman_region32_t surface_repaint_region;
-    pixman_region32_init_rect(&surface_region, 0, 0, view->surface->width, view->surface->height);
+    struct weston_buffer *buffer = view->surface->buffer_ref.buffer;
+    pixman_region32_init_rect(&buffer_region, 0, 0, buffer->width, buffer->height);
     pixman_region32_init(&surface_repaint_region);
 
-    LOG_REGION(1, &surface_region);
+    LOG_REGION(1, &buffer_region);
     LOG_REGION(2, &view->transform.boundingbox);
     pixman_region32_intersect(global_repaint_region, &view->transform.boundingbox, output_damage);
     LOG_REGION(3, global_repaint_region);
@@ -477,14 +478,14 @@ void hdi_renderer_repaint_output_calc_region(pixman_region32_t *global_repaint_r
     weston_surface_to_buffer_region(view->surface, &surface_repaint_region, buffer_repaint_region);
     LOG_REGION(5, buffer_repaint_region);
 
-    pixman_region32_intersect(buffer_repaint_region, buffer_repaint_region, &surface_region);
+    pixman_region32_intersect(buffer_repaint_region, buffer_repaint_region, &buffer_region);
     LOG_REGION(6, buffer_repaint_region);
 
     pixman_region32_translate(global_repaint_region, -output->x, -output->y);
     LOG_REGION(7, global_repaint_region);
 
     pixman_region32_fini(&surface_repaint_region);
-    pixman_region32_fini(&surface_region);
+    pixman_region32_fini(&buffer_region);
 }
 
 void hdi_renderer_surface_state_calc_rect(struct hdi_surface_state *hss,
