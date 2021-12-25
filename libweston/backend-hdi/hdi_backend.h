@@ -31,6 +31,11 @@
 #include <idisplay_gralloc.h>
 
 #ifdef __cplusplus
+#include <list>
+#include <map>
+#endif
+
+#ifdef __cplusplus
 extern "C" {
 #endif
 
@@ -38,11 +43,28 @@ extern "C" {
 #include "libweston/libweston.h"
 #include "libweston/backend.h"
 #include "linux-dmabuf.h"
-
+#include "shared/weston-egl-ext.h"
+#include "renderer-gl/gl-renderer.h"
 struct weston_hdi_backend_config;
 
 enum hdi_renderer_type {
     HDI_RENDERER_HDI,
+};
+
+struct LayerDumpInfo {
+    weston_view *view;
+    LayerAlpha alpha;
+    IRect src;
+    IRect dst;
+    uint32_t zorder;
+    BlendType blend_type;
+    CompositionType comp_type;
+    TransformType rotate_type;
+};
+
+struct ViewDumpInfo {
+    weston_view *view;
+    enum weston_renderer_type type;
 };
 
 struct hdi_backend {
@@ -54,12 +76,21 @@ struct hdi_backend {
     ::OHOS::HDI::Display::V1_0::IDisplayGralloc *display_gralloc;
     struct udev_input input;
     struct udev *udev;
+    struct gl_renderer_interface *glri;
+    uint32_t gbm_format;
+    struct timeval samples[6];
+    int32_t sample_current;
+#ifdef __cplusplus
+    std::map<uint32_t, std::map<uint32_t, LayerDumpInfo>> layer_dump_info_pending, layer_dump_info;
+    std::map<uint32_t, std::list<ViewDumpInfo>> view_dump_info_pending, view_dump_info;
+#endif
 };
 
 struct hdi_pending_state {
     struct hdi_backend *backend;
-    int device_id;
-    BufferHandle *framebuffer;
+#ifdef __cplusplus
+    std::map<uint32_t, BufferHandle *> framebuffers;
+#endif
 };
 
 struct hdi_backend *

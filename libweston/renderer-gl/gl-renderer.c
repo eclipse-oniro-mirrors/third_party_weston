@@ -68,6 +68,10 @@
 
 #define BUFFER_DAMAGE_COUNT 2
 #define GBM_DEVICE_PATH "/dev/dri/card0"
+#define GENERAL_ATTRIBS  3
+#define PLANE_ATTRIBS  5
+#define ENTRIES_PER_ATTRIB  2
+#define MAX_BUFFER_PLANES  4
 
 enum gl_border_status {
 	BORDER_STATUS_CLEAN = 0,
@@ -100,6 +104,11 @@ struct gl_output_state {
 
 	/* struct timeline_render_point::link */
 	struct wl_list timeline_render_point_list;
+
+	// OHOS hdi-backend
+	struct gl_fbo fbo[GL_RENDERER_FRMAEBUFFER_SIZE];
+	int current_fbo_index;
+	bool use_fbo;
 };
 
 enum buffer_type {
@@ -234,7 +243,7 @@ dump_format(uint32_t format, char out[4])
 static inline struct gl_output_state *
 get_output_state(struct weston_output *output)
 {
-	return (struct gl_output_state *)output->renderer_state;
+	return (struct gl_output_state *)output->gpu_renderer_state;
 }
 
 static int
@@ -243,10 +252,9 @@ gl_renderer_create_surface(struct weston_surface *surface);
 static inline struct gl_surface_state *
 get_surface_state(struct weston_surface *surface)
 {
-	if (!surface->renderer_state)
+	if (!surface->gpu_renderer_state)
 		gl_renderer_create_surface(surface);
-
-	return (struct gl_surface_state *)surface->renderer_state;
+	return (struct gl_surface_state *)surface->gpu_renderer_state;
 }
 
 static void
@@ -710,8 +718,8 @@ use_output(struct weston_output *output)
 	struct gl_renderer *gr = get_renderer(output->compositor);
 	EGLBoolean ret;
 
-	ret = eglMakeCurrent(gr->egl_display, go->egl_surface,
-			     go->egl_surface, gr->egl_context);
+	ret = eglMakeCurrent(gr->egl_display, EGL_NO_SURFACE,
+			     EGL_NO_SURFACE, gr->egl_context);
 
 	if (ret == EGL_FALSE) {
 		if (errored)
@@ -1005,9 +1013,12 @@ repaint_views(struct weston_output *output, pixman_region32_t *damage)
 	struct weston_compositor *compositor = output->compositor;
 	struct weston_view *view;
 
-	wl_list_for_each_reverse(view, &compositor->view_list, link)
-		if (view->plane == &compositor->primary_plane)
+	wl_list_for_each_reverse(view, &compositor->view_list, link) {
+		if (view->plane == &compositor->primary_plane
+			&& view->renderer_type == WESTON_RENDERER_TYPE_GPU) {
 			draw_view(view, output, damage);
+        }
+    }
 }
 
 static int
@@ -1028,7 +1039,8 @@ update_buffer_release_fences(struct weston_compositor *compositor,
 		struct weston_buffer_release *buffer_release;
 		int fence_fd;
 
-		if (view->plane != &compositor->primary_plane)
+		if (view->plane != &compositor->primary_plane
+			|| view->renderer_type != WESTON_RENDERER_TYPE_GPU)
 			continue;
 
 		gs = get_surface_state(view->surface);
@@ -1401,22 +1413,28 @@ gl_renderer_repaint_output(struct weston_output *output,
 	if (use_output(output) < 0)
 		return;
 
+	// OHOS hdi-backend
+	if (go->use_fbo) {
+		glBindFramebuffer(GL_FRAMEBUFFER, go->fbo[go->current_fbo_index].fbo);
+	}
+
 	/* Clear the used_in_output_repaint flag, so that we can properly track
 	 * which surfaces were used in this output repaint. */
 	wl_list_for_each_reverse(view, &compositor->view_list, link) {
-		if (view->plane == &compositor->primary_plane) {
+		if (view->plane == &compositor->primary_plane
+			&& view->renderer_type == WESTON_RENDERER_TYPE_GPU ) {
 			struct gl_surface_state *gs =
 				get_surface_state(view->surface);
 			gs->used_in_output_repaint = false;
 		}
 	}
 
-	if (go->begin_render_sync != EGL_NO_SYNC_KHR)
-		gr->destroy_sync(gr->egl_display, go->begin_render_sync);
-	if (go->end_render_sync != EGL_NO_SYNC_KHR)
-		gr->destroy_sync(gr->egl_display, go->end_render_sync);
+	// if (go->begin_render_sync != EGL_NO_SYNC_KHR)
+	// 	gr->destroy_sync(gr->egl_display, go->begin_render_sync);
+	// if (go->end_render_sync != EGL_NO_SYNC_KHR)
+	// 	gr->destroy_sync(gr->egl_display, go->end_render_sync);
 
-	go->begin_render_sync = create_render_sync(gr);
+	// go->begin_render_sync = create_render_sync(gr);
 
 	/* Calculate the viewport */
 	glViewport(go->borders[GL_RENDERER_BORDER_LEFT].width,
@@ -1432,6 +1450,7 @@ gl_renderer_repaint_output(struct weston_output *output,
 	weston_matrix_scale(&go->output_matrix,
 			    2.0 / output->current_mode->width,
 			    -2.0 / output->current_mode->height, 1);
+	weston_matrix_scale(&go->output_matrix, 1, -1, 1);
 
 	/* In fan debug mode, redraw everything to make sure that we clear any
 	 * fans left over from previous draws on this buffer.
@@ -1483,11 +1502,18 @@ gl_renderer_repaint_output(struct weston_output *output,
 	pixman_region32_fini(&total_damage);
 	pixman_region32_fini(&previous_damage);
 
-	draw_output_borders(output, border_status);
+	//draw_output_borders(output, border_status);
 
-	wl_signal_emit(&output->frame_signal, output_damage);
+	// wl_signal_emit(&output->frame_signal, output_damage);
 
-	go->end_render_sync = create_render_sync(gr);
+	// go->end_render_sync = create_render_sync(gr);
+
+	// OHOS hdi-backend
+	if (go->use_fbo) {
+		glFinish();
+		go->current_fbo_index = (go->current_fbo_index + 1) % 2;
+		return;
+	}
 
 	if (gr->swap_buffers_with_damage && !gr->fan_debug) {
 		int n_egl_rects;
@@ -2834,7 +2860,7 @@ surface_state_destroy(struct gl_surface_state *gs, struct gl_renderer *gr)
 	wl_list_remove(&gs->surface_destroy_listener.link);
 	wl_list_remove(&gs->renderer_destroy_listener.link);
 
-	gs->surface->renderer_state = NULL;
+	gs->surface->gpu_renderer_state = NULL;
 
 	glDeleteTextures(gs->num_textures, gs->textures);
 
@@ -2896,7 +2922,7 @@ gl_renderer_create_surface(struct weston_surface *surface)
 	gs->surface = surface;
 
 	pixman_region32_init(&gs->texture_damage);
-	surface->renderer_state = gs;
+	surface->gpu_renderer_state = gs;
 
 	gs->surface_destroy_listener.notify =
 		surface_state_handle_surface_destroy;
@@ -2950,7 +2976,7 @@ static const char texture_fragment_shader_rgba[] =
 	"uniform float alpha;\n"
 	"void main()\n"
 	"{\n"
-	"   gl_FragColor = alpha * texture2D(tex, v_texcoord)\n;"
+	"   gl_FragColor.argb = alpha * texture2D(tex, v_texcoord).rgba\n;"
 	;
 
 static const char texture_fragment_shader_rgbx[] =
@@ -3267,7 +3293,7 @@ gl_renderer_output_create(struct weston_output *output,
 	go->begin_render_sync = EGL_NO_SYNC_KHR;
 	go->end_render_sync = EGL_NO_SYNC_KHR;
 
-	output->renderer_state = go;
+	output->gpu_renderer_state = go;
 
 	return 0;
 }
@@ -3337,6 +3363,79 @@ gl_renderer_output_pbuffer_create(struct weston_output *output,
 	return ret;
 }
 
+// OHOS hdi-backend
+static void gl_renderer_output_destroy(struct weston_output *output);
+static int
+gl_renderer_output_fbo_create(struct weston_output *output,
+				 const struct gl_renderer_fbo_options *options)
+{
+	struct weston_compositor *ec = output->compositor;
+	struct gl_renderer *gr = get_renderer(ec);
+
+	if (eglMakeCurrent(gr->egl_display, EGL_NO_SURFACE,
+			   EGL_NO_SURFACE, gr->egl_context) == EGL_FALSE) {
+		weston_log("Failed to make EGL context current.\n");
+		return -1;
+	}
+
+    int ret = gl_renderer_output_create(output, EGL_NO_SURFACE);
+    if (ret) {
+        return ret;
+    }
+
+	struct gl_output_state *go = get_output_state(output);
+	int i;
+	for (i = 0; i < GL_RENDERER_FRMAEBUFFER_SIZE; i++) {
+		assert(options->handle[i] != NULL || !"gl_renderer_fbo_options is error.");
+
+		EGLint attribs[] = {
+			EGL_WIDTH, options->handle[i]->width,
+			EGL_HEIGHT, options->handle[i]->height,
+			EGL_LINUX_DRM_FOURCC_EXT, DRM_FORMAT_ARGB8888,
+			EGL_DMA_BUF_PLANE0_FD_EXT, options->handle[i]->fd,
+			EGL_DMA_BUF_PLANE0_OFFSET_EXT, 0,
+			EGL_DMA_BUF_PLANE0_PITCH_EXT, options->handle[i]->stride,
+			EGL_NONE,
+		};
+
+		go->fbo[i].image = gr->create_image(gr->egl_display, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, NULL, attribs);
+		if (go->fbo[i].image == EGL_NO_IMAGE_KHR) {
+			weston_log("##createImage failed.");
+			break;
+		}
+
+		glGenTextures(1, &go->fbo[i].tex);
+		glBindTexture(GL_TEXTURE_2D, go->fbo[i].tex);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+		gr->image_target_texture_2d(GL_TEXTURE_2D, go->fbo[i].image);
+
+		glGenFramebuffers(1, &go->fbo[i].fbo);
+		glBindFramebuffer(GL_FRAMEBUFFER, go->fbo[i].fbo);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, go->fbo[i].tex, 0);
+		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+			weston_log("glCheckFramebufferStatus failed");
+			glDeleteFramebuffers(1, &go->fbo[i].fbo);
+			glDeleteTextures(1, &go->fbo[i].tex);
+			gr->destroy_image(gr->egl_display, go->fbo[i].image);
+			break;
+		}
+	}
+
+	if (i != GL_RENDERER_FRMAEBUFFER_SIZE) {
+		gl_renderer_output_destroy(output);
+		return -1;
+	}
+
+	go->current_fbo_index = 0;
+	go->use_fbo = true;
+
+	return 0;
+}
+
 static void
 gl_renderer_output_destroy(struct weston_output *output)
 {
@@ -3366,7 +3465,29 @@ gl_renderer_output_destroy(struct weston_output *output)
 	if (go->end_render_sync != EGL_NO_SYNC_KHR)
 		gr->destroy_sync(gr->egl_display, go->end_render_sync);
 
+	for (int32_t i = 0; i < GL_RENDERER_FRMAEBUFFER_SIZE; i++) {
+		if (go->fbo[i].fbo) {
+			glDeleteFramebuffers(1, &go->fbo[i].fbo);
+		}
+
+		if (go->fbo[i].tex) {
+			glDeleteTextures(1, &go->fbo[i].tex);
+		}
+
+		if (go->fbo[i].image != EGL_NO_IMAGE_KHR) {
+			gr->destroy_image(gr->egl_display, go->fbo[i].image);
+		}
+	}
+
 	free(go);
+}
+
+// OHOS hdi-backend
+static int
+gl_renderer_output_get_current_fbo_index(struct weston_output *output)
+{
+	struct gl_output_state *go = get_output_state(output);
+	return go->current_fbo_index;
 }
 
 static int
@@ -3427,8 +3548,10 @@ gl_renderer_destroy(struct weston_compositor *ec)
 	if (gr->fan_binding)
 		weston_binding_destroy(gr->fan_binding);
 
+	// OHOS hdi-backend
 	gbm_device_destroy(gr->device);
-    close(gr->gbm_fd);
+	close(gr->gbm_fd);
+
 	free(gr);
 }
 
@@ -3489,6 +3612,8 @@ gl_renderer_display_create(struct weston_compositor *ec,
 		return -1;
 
 	gr->platform = options->egl_platform;
+
+	// OHOS hdi-backend
 	gr->gbm_fd = open(GBM_DEVICE_PATH, O_RDWR);
     if (gr->gbm_fd < 0) {
         weston_log("failed to open gbm render node.\n");
@@ -3515,12 +3640,12 @@ gl_renderer_display_create(struct weston_compositor *ec,
 		gl_renderer_surface_get_content_size;
 	gr->base.surface_copy_content = gl_renderer_surface_copy_content;
 
-	if (gl_renderer_setup_egl_display(gr, options->egl_native_display) < 0)
+	if (gl_renderer_setup_egl_display(gr, gr->device) < 0)
 		goto fail_device;
 
 	log_egl_info(gr->egl_display);
 
-	ec->renderer = &gr->base;
+	ec->gpu_renderer = &gr->base;
 
 	if (gl_renderer_setup_egl_extensions(ec) < 0)
 		goto fail_with_error;
@@ -3589,13 +3714,16 @@ fail_with_error:
 	gl_renderer_print_egl_error_state();
 fail_terminate:
 	eglTerminate(gr->egl_display);
+
+// OHOS hdi-backend
 fail_device:
 	gbm_device_destroy(gr->device);
 fail_fd:
 	close(gr->gbm_fd);
+
 fail:
 	free(gr);
-	ec->renderer = NULL;
+	ec->gpu_renderer = NULL;
 	return -1;
 }
 
@@ -3753,8 +3881,8 @@ gl_renderer_setup(struct weston_compositor *ec, EGLSurface egl_surface)
 		}
 	}
 
-	ret = eglMakeCurrent(gr->egl_display, egl_surface,
-			     egl_surface, gr->egl_context);
+	ret = eglMakeCurrent(gr->egl_display, EGL_NO_SURFACE,
+			     EGL_NO_SURFACE, gr->egl_context);
 	if (ret == EGL_FALSE) {
 		weston_log("Failed to make EGL context current.\n");
 		gl_renderer_print_egl_error_state();
@@ -3838,4 +3966,7 @@ WL_EXPORT struct gl_renderer_interface gl_renderer_interface = {
 	.output_destroy = gl_renderer_output_destroy,
 	.output_set_border = gl_renderer_output_set_border,
 	.create_fence_fd = gl_renderer_create_fence_fd,
+	// OHOS hdi-backend
+	.output_fbo_create = gl_renderer_output_fbo_create,
+	.output_get_current_fbo_index = gl_renderer_output_get_current_fbo_index,
 };

@@ -224,7 +224,7 @@ process_multimodalinput_touch_event(struct libinput_event *event, struct evdev_d
         return false;
     }
     struct weston_touch *touch = device->touch_device->aggregate;
-    if (!touch || !weston_touch_has_focus_resource(touch)) {
+    if (!touch || !touch->focus) {
         weston_log("process_multimodalinput_events: weston_touch_has_focus_resource return false.\n");
         return false;
     }

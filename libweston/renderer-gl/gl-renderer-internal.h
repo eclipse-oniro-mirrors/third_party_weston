@@ -30,6 +30,7 @@
 #include <GLES2/gl2ext.h>
 #include "shared/simple_gbm.h"
 #include "shared/weston-egl-ext.h"  /* for PFN* stuff */
+#include "gl-renderer.h"
 
 struct gl_shader {
 	GLuint program;
@@ -39,6 +40,12 @@ struct gl_shader {
 	GLint alpha_uniform;
 	GLint color_uniform;
 	const char *vertex_source, *fragment_source;
+};
+
+struct gl_fbo {
+	EGLImageKHR image;
+    GLuint tex;
+    GLuint fbo;
 };
 
 struct gl_renderer {
@@ -127,7 +134,7 @@ struct gl_renderer {
 static inline struct gl_renderer *
 get_renderer(struct weston_compositor *ec)
 {
-	return (struct gl_renderer *)ec->renderer;
+	return (struct gl_renderer *)ec->gpu_renderer;
 }
 
 void
