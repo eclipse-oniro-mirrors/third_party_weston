@@ -25,23 +25,9 @@ group("default") {
     ":weston.ini",
     ":weston.rc",
   ]
-
-  if (ace_enable_gpu) {
-    public_deps += [
-      ":gl-renderer",
-
-      # ":simple-dmabuf-egl-hos",
-      # ":simple-egl-hos",
-      "//third_party/wayland_standard:libwayland_client.0",
-      "//third_party/wayland_standard:libwayland_server.0",
-    ]
-  }
 }
 
 weston_defines = []
-if (ace_enable_gpu) {
-  weston_defines += [ "BUILD_DRM_GBM=1" ]
-}
 if (is_mmi_have_hdf) {
   weston_defines += [ "LIBINPUT_THIRD_HDF" ]
 }
@@ -515,10 +501,6 @@ ohos_shared_library("drm-backend") {
     "//third_party/wayland-protocols_standard:relative_pointer_unstable_v1_protocol",
     "//third_party/wayland_standard:wayland_core_protocol",
   ]
-
-  if (ace_enable_gpu) {
-    sources += [ "libweston/backend-drm/drm-gbm.c" ]
-  }
 
   part_name = "graphic_standard"
   subsystem_name = "graphic"
