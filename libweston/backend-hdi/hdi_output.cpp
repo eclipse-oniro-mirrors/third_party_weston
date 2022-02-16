@@ -321,13 +321,13 @@ hdi_output_set_mode(struct weston_output *base)
     uint32_t device_id = hdi_head_get_device_id(whead);
 
     int mode_number = 0;
-    int ret = b->device_funcs->GetDisplaySuppportedModes(device_id, &mode_number, NULL);
-    LOG_CORE("DeviceFuncs.GetDisplaySuppportedModes return %d", ret);
+    int ret = b->device_funcs->GetDisplaySupportedModes(device_id, &mode_number, NULL);
+    LOG_CORE("DeviceFuncs.GetDisplaySupportedModes return %d", ret);
 
     DisplayModeInfo *modes =
         reinterpret_cast<DisplayModeInfo *>(zalloc(mode_number * sizeof(DisplayModeInfo)));
-    ret = b->device_funcs->GetDisplaySuppportedModes(device_id, &mode_number, modes);
-    LOG_CORE("DeviceFuncs.GetDisplaySuppportedModes return %d", ret);
+    ret = b->device_funcs->GetDisplaySupportedModes(device_id, &mode_number, modes);
+    LOG_CORE("DeviceFuncs.GetDisplaySupportedModes return %d", ret);
     LOG_INFO("%s support %d modes", base->name, mode_number);
 
     uint32_t active_mode_id;
