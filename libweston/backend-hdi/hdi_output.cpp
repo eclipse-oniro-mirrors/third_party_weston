@@ -320,7 +320,7 @@ hdi_output_set_mode(struct weston_output *base)
     struct weston_head *whead = weston_output_get_first_head(&output->base);
     uint32_t device_id = hdi_head_get_device_id(whead);
 
-    int mode_number = 0;
+    uint32_t mode_number = 0;
     int ret = b->device_funcs->GetDisplaySupportedModes(device_id, &mode_number, NULL);
     LOG_CORE("DeviceFuncs.GetDisplaySupportedModes return %d", ret);
 
