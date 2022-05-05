@@ -25,7 +25,7 @@
 
 #include "weston_bytrace.h"
 
-#include <bytrace.h>
+#include <hitrace_meter.h>
 
 void weston_bytrace_begin(const char *label)
 {

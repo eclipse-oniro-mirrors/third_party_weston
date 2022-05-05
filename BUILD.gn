@@ -659,9 +659,7 @@ ohos_static_library("weston_bytrace") {
 
   public_configs = [ ":weston_bytrace_public_config" ]
 
-  deps = [
-    "//developtools/bytrace_standard/interfaces/innerkits/native:bytrace_core",
-  ]
+  external_deps = [ "hitrace_native:hitrace_meter" ]
 }
 
 ## Build weston_bytrace.so }}}
