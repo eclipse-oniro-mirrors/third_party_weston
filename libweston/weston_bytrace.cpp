@@ -31,11 +31,11 @@ void weston_bytrace_begin(const char *label)
 {
     std::string str = label;
     UpdateTraceLabel();
-    StartTrace(BYTRACE_TAG_GRAPHIC_AGP, str);
+    StartTrace(HITRACE_TAG_GRAPHIC_AGP, str);
 }
 
 void weston_bytrace_end(const char *label)
 {
     (void)label;
-    FinishTrace(BYTRACE_TAG_GRAPHIC_AGP);
+    FinishTrace(HITRACE_TAG_GRAPHIC_AGP);
 }
