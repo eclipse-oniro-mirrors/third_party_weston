@@ -13,7 +13,6 @@
 
 import("//build/ohos.gni")
 import("//foundation/graphic/standard/graphic_config.gni")
-import("//foundation/multimodalinput/input/multimodalinput_mini.gni")
 import("//third_party/wayland_standard/wayland_protocol.gni")
 
 group("default") {
@@ -28,9 +27,6 @@ group("default") {
 }
 
 weston_defines = []
-if (is_mmi_have_hdf) {
-  weston_defines += [ "LIBINPUT_THIRD_HDF" ]
-}
 
 set_defaults("ohos_shared_library") {
   defines = weston_defines
